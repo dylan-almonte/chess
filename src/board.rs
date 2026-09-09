@@ -1,0 +1,1 @@
+//! Bitboard-backed chess position.
