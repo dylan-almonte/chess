@@ -6,5 +6,6 @@ pub mod piece;
 pub mod square;
 
 pub use board::Position;
+pub use fen::{parse_fen, to_fen, FenError};
 pub use piece::{Color, Piece, PieceKind};
 pub use square::Square;
