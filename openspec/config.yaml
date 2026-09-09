@@ -1,0 +1,30 @@
+schema: spec-driven
+
+context: |
+  From-scratch UCI chess engine in Rust 2024. Library + binary (src/lib.rs + src/main.rs).
+  No third-party chess crates. Specs describe observable behavior (FEN, moves, perft, UCI);
+  representation choices live in design.md. Every scenario maps to a named Rust test.
+  One OpenSpec change per engine layer. Square indexing: a1=0 … h8=63 (LERF).
+  See openspec/project.md for full conventions.
+
+rules:
+  proposal:
+    - Include Non-goals section
+    - Keep scope to a single engine layer
+  specs:
+    - Use Given/When/Then scenarios
+    - Prefer concrete FEN strings and numeric expectations
+  design:
+    - Document bitboard layout and square indexing when relevant
+  tasks:
+    - Order tasks so tests can go red then green
+    - End with cargo test and openspec validate
+
+operations:
+  apply:
+    guidance:
+      - Implement tasks in order; mark checkboxes when done
+      - Keep main.rs a stub until the uci-protocol change
+  archive:
+    guidance:
+      - Confirm cargo test is green before archiving
