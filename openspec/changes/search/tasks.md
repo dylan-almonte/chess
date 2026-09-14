@@ -16,5 +16,5 @@
 
 ## 4. Gate
 
-- [ ] 4.1 Ensure every search and UCI delta-spec scenario has a named `#[test]` and `cargo test` passes
-- [ ] 4.2 Run `openspec validate search --strict` and fix any issues
+- [x] 4.1 Ensure every search and UCI delta-spec scenario has a named `#[test]` and `cargo test` passes
+- [x] 4.2 Run `openspec validate search --strict` and fix any issues
