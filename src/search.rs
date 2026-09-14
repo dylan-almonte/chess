@@ -19,6 +19,7 @@ pub struct SearchResult {
     pub score: i32,
     pub pv: Vec<Move>,
     pub nodes: u64,
+    pub depth: u32,
 }
 
 /// Search `pos` to `max_depth` plies using iterative deepening.
@@ -34,6 +35,7 @@ pub fn search_iter(pos: &Position, max_depth: u32, mut on_iteration: impl FnMut(
         score: 0,
         pv: Vec::new(),
         nodes: 0,
+        depth: 0,
     };
     let mut total_nodes = 0;
     for depth in 1..=max_depth {
@@ -47,6 +49,7 @@ pub fn search_iter(pos: &Position, max_depth: u32, mut on_iteration: impl FnMut(
             score,
             pv,
             nodes: total_nodes,
+            depth,
         };
         on_iteration(&last);
         if last.best_move.is_none() {

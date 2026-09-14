@@ -7,10 +7,12 @@ use crate::fen::parse_fen;
 use crate::makemove::make_move;
 use crate::movegen::generate_legal;
 use crate::moves::Move;
+use crate::search::{mate_in, search_iter, SearchResult};
 
 const START_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 pub const ENGINE_NAME: &str = "chess";
 pub const ENGINE_AUTHOR: &str = "dylanca";
+const DEFAULT_GO_DEPTH: u32 = 4;
 
 /// Result of handling one UCI input line.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -65,7 +67,7 @@ impl UciSession {
                 self.handle_position(line);
                 UciAction::Reply(vec![])
             }
-            "go" => UciAction::Reply(vec![self.bestmove_line()]),
+            "go" => UciAction::Reply(self.go_replies(line)),
             "quit" => UciAction::Quit,
             _ => UciAction::Reply(vec![]),
         }
@@ -104,13 +106,51 @@ impl UciSession {
         self.position = pos;
     }
 
-    fn bestmove_line(&self) -> String {
-        let moves = generate_legal(&self.position);
-        match moves.first() {
-            Some(mv) => format!("bestmove {mv}"),
-            None => "bestmove 0000".to_string(),
+    fn go_replies(&self, line: &str) -> Vec<String> {
+        let depth = parse_go_depth(line);
+        let mut lines = Vec::new();
+        let result = search_iter(&self.position, depth, |iter| {
+            if iter.best_move.is_some() {
+                lines.push(format_info(iter));
+            }
+        });
+        match result.best_move {
+            Some(mv) => lines.push(format!("bestmove {mv}")),
+            None => lines.push("bestmove 0000".to_string()),
+        }
+        lines
+    }
+}
+
+fn parse_go_depth(line: &str) -> u32 {
+    let mut tokens = line.split_whitespace();
+    while let Some(tok) = tokens.next() {
+        if tok == "depth" {
+            if let Some(n) = tokens.next().and_then(|s| s.parse::<u32>().ok()) {
+                if n > 0 {
+                    return n;
+                }
+            }
         }
     }
+    DEFAULT_GO_DEPTH
+}
+
+fn format_info(result: &SearchResult) -> String {
+    let score = match mate_in(result.score) {
+        Some(n) => format!("mate {n}"),
+        None => format!("cp {}", result.score),
+    };
+    let pv = result
+        .pv
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!(
+        "info depth {} score {} nodes {} pv {pv}",
+        result.depth, score, result.nodes
+    )
 }
 
 fn split_moves(rest: &str) -> (&str, Option<&str>) {
