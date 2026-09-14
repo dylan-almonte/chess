@@ -20,6 +20,6 @@ pub use movegen::{generate_legal, generate_pseudo_legal, is_square_attacked};
 pub use moves::Move;
 pub use perft::perft;
 pub use piece::{Color, Piece, PieceKind};
-pub use search::{search, SearchResult, MATE};
+pub use search::{mate_in, search, search_iter, SearchResult, MATE};
 pub use square::Square;
 pub use uci::{UciAction, UciSession};

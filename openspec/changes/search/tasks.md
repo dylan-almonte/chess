@@ -7,7 +7,7 @@
 
 - [x] 2.1 Implement side-to-move eval at quiet depth-0 leaves, legal make/unmake negamax, and mate/stalemate terminals (`MATE = 30_000`, ply distance, in-check via `king_square` + `is_square_attacked`) on a root clone — verify checkmate, stalemate, mate-in-one, hanging-queen, and startpos PV tests pass
 - [x] 2.2 Add alpha-beta (`-beta, -alpha`) and capture-first ordering (`Move::is_capture`) — verify the same tests still pass
-- [ ] 2.3 Add iterative deepening `1..=max_depth`, reconstruct PV from child PVs, and try the previous iteration’s PV move first — verify depth-1 `e4d5`, depth-2 not `e4d5`, and that a depth-2 PV’s moves are legal in sequence
+- [x] 2.3 Add iterative deepening `1..=max_depth`, reconstruct PV from child PVs, and try the previous iteration’s PV move first — verify depth-1 `e4d5`, depth-2 not `e4d5`, and that a depth-2 PV’s moves are legal in sequence
 
 ## 3. UCI `go` uses search
 

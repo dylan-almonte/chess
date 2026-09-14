@@ -21,17 +21,39 @@ pub struct SearchResult {
     pub nodes: u64,
 }
 
-/// Search `pos` to `max_depth` plies.
+/// Search `pos` to `max_depth` plies using iterative deepening.
 pub fn search(pos: &Position, max_depth: u32) -> SearchResult {
-    let mut pos = pos.clone();
-    let mut nodes = 0;
-    let (score, pv) = negamax(&mut pos, max_depth, -INF, INF, 0, &mut nodes);
-    SearchResult {
-        best_move: pv.first().copied(),
-        score,
-        pv,
-        nodes,
+    search_iter(pos, max_depth, |_| {})
+}
+
+/// Like [`search`], invoking `on_iteration` after each completed depth.
+pub fn search_iter(pos: &Position, max_depth: u32, mut on_iteration: impl FnMut(&SearchResult)) -> SearchResult {
+    let max_depth = max_depth.max(1);
+    let mut last = SearchResult {
+        best_move: None,
+        score: 0,
+        pv: Vec::new(),
+        nodes: 0,
+    };
+    let mut total_nodes = 0;
+    for depth in 1..=max_depth {
+        let mut pos = pos.clone();
+        let mut nodes = 0;
+        let pv_move = last.best_move;
+        let (score, pv) = negamax(&mut pos, depth, -INF, INF, 0, &mut nodes, pv_move);
+        total_nodes += nodes;
+        last = SearchResult {
+            best_move: pv.first().copied(),
+            score,
+            pv,
+            nodes: total_nodes,
+        };
+        on_iteration(&last);
+        if last.best_move.is_none() {
+            break;
+        }
     }
+    last
 }
 
 fn stm_eval(pos: &Position) -> i32 {
@@ -42,8 +64,16 @@ fn stm_eval(pos: &Position) -> i32 {
     }
 }
 
-fn order_moves(moves: &mut [Move]) {
-    moves.sort_by_key(|m| if m.is_capture() { 0u8 } else { 1 });
+fn order_moves(moves: &mut [Move], pv_move: Option<Move>) {
+    moves.sort_by_key(|m| {
+        if Some(*m) == pv_move {
+            0u8
+        } else if m.is_capture() {
+            1
+        } else {
+            2
+        }
+    });
 }
 
 fn negamax(
@@ -53,6 +83,7 @@ fn negamax(
     beta: i32,
     ply: i32,
     nodes: &mut u64,
+    pv_move: Option<Move>,
 ) -> (i32, Vec<Move>) {
     *nodes += 1;
 
@@ -72,13 +103,14 @@ fn negamax(
         return (stm_eval(pos), Vec::new());
     }
 
-    order_moves(&mut moves);
+    order_moves(&mut moves, pv_move);
 
     let mut best_score = -INF;
     let mut best_pv = Vec::new();
     for mv in moves {
         let undo = make_move(pos, mv);
-        let (child_score, child_pv) = negamax(pos, depth - 1, -beta, -alpha, ply + 1, nodes);
+        let (child_score, child_pv) =
+            negamax(pos, depth - 1, -beta, -alpha, ply + 1, nodes, None);
         unmake_move(pos, mv, undo);
         let score = -child_score;
         if score > best_score {
