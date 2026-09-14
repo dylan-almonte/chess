@@ -1,7 +1,7 @@
 ## 1. Search module skeleton
 
 - [x] 1.1 Add `src/search.rs` with `SearchResult { best_move, score, pv, nodes }` and `search(pos, max_depth)` stub (empty PV, `best_move: None`, score `0`) and wire `mod search` / `pub use search::{search, SearchResult}` from `lib.rs` — verify with `cargo check`
-- [ ] 1.2 Add failing named tests for every search delta-spec scenario (startpos depth-1 legal PV, hanging queen `h1h4`, rook mate `e7e8` mate in 1, checkmate no move, stalemate score `0`, depth-1 `e4d5`, depth-2 not `e4d5`) — verify tests compile and fail (`cargo test search_ -- --nocapture` shows failures)
+- [x] 1.2 Add failing named tests for every search delta-spec scenario (startpos depth-1 legal PV, hanging queen `h1h4`, rook mate `e7e8` mate in 1, checkmate no move, stalemate score `0`, depth-1 `e4d5`, depth-2 not `e4d5`) — verify tests compile and fail (`cargo test search_ -- --nocapture` shows failures)
 
 ## 2. Negamax, terminals, and iterative deepening
 
