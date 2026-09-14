@@ -25,7 +25,7 @@ pub struct SearchResult {
 pub fn search(pos: &Position, max_depth: u32) -> SearchResult {
     let mut pos = pos.clone();
     let mut nodes = 0;
-    let (score, pv) = negamax(&mut pos, max_depth, 0, &mut nodes);
+    let (score, pv) = negamax(&mut pos, max_depth, -INF, INF, 0, &mut nodes);
     SearchResult {
         best_move: pv.first().copied(),
         score,
@@ -42,14 +42,25 @@ fn stm_eval(pos: &Position) -> i32 {
     }
 }
 
-fn negamax(pos: &mut Position, depth: u32, ply: i32, nodes: &mut u64) -> (i32, Vec<Move>) {
+fn order_moves(moves: &mut [Move]) {
+    moves.sort_by_key(|m| if m.is_capture() { 0u8 } else { 1 });
+}
+
+fn negamax(
+    pos: &mut Position,
+    depth: u32,
+    mut alpha: i32,
+    beta: i32,
+    ply: i32,
+    nodes: &mut u64,
+) -> (i32, Vec<Move>) {
     *nodes += 1;
 
     if depth == 0 && !in_check(pos, pos.side_to_move) {
         return (stm_eval(pos), Vec::new());
     }
 
-    let moves = generate_legal(pos);
+    let mut moves = generate_legal(pos);
     if moves.is_empty() {
         if in_check(pos, pos.side_to_move) {
             return (-MATE + ply, Vec::new());
@@ -61,11 +72,13 @@ fn negamax(pos: &mut Position, depth: u32, ply: i32, nodes: &mut u64) -> (i32, V
         return (stm_eval(pos), Vec::new());
     }
 
+    order_moves(&mut moves);
+
     let mut best_score = -INF;
     let mut best_pv = Vec::new();
     for mv in moves {
         let undo = make_move(pos, mv);
-        let (child_score, child_pv) = negamax(pos, depth - 1, ply + 1, nodes);
+        let (child_score, child_pv) = negamax(pos, depth - 1, -beta, -alpha, ply + 1, nodes);
         unmake_move(pos, mv, undo);
         let score = -child_score;
         if score > best_score {
@@ -73,6 +86,12 @@ fn negamax(pos: &mut Position, depth: u32, ply: i32, nodes: &mut u64) -> (i32, V
             best_pv.clear();
             best_pv.push(mv);
             best_pv.extend(child_pv);
+        }
+        if best_score > alpha {
+            alpha = best_score;
+        }
+        if alpha >= beta {
+            break;
         }
     }
     (best_score, best_pv)
