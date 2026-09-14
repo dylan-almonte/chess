@@ -11,7 +11,7 @@
 
 ## 3. UCI `go` uses search
 
-- [ ] 3.1 Add failing UCI tests for the delta scenarios (`go depth 1` legal + `info` before `bestmove`, `go depth 2` emits `depth 1` and `depth 2` info, hanging queen `bestmove h1h4`, rook mate `bestmove e7e8` and `score mate 1`) — verify they fail while existing `go` legality / `0000` tests still pass
+- [x] 3.1 Add failing UCI tests for the delta scenarios (`go depth 1` legal + `info` before `bestmove`, `go depth 2` emits `depth 1` and `depth 2` info, hanging queen `bestmove h1h4`, rook mate `bestmove e7e8` and `score mate 1`) — verify they fail while existing `go` legality / `0000` tests still pass
 - [ ] 3.2 Parse `go` tokens (`depth N` or default `4`; ignore time tokens), run search, emit one `info depth … score … nodes … pv …` line per completed iteration, then `bestmove` / `0000` — verify all new and existing UCI tests pass (`cargo test uci`)
 
 ## 4. Gate

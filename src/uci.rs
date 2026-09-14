@@ -243,4 +243,88 @@ mod tests {
         let _ = replies(&mut session, "uci");
         assert_eq!(session.handle_line("quit"), UciAction::Quit);
     }
+
+    #[test]
+    fn go_depth_1_still_returns_a_legal_move() {
+        let mut session = UciSession::new();
+        let _ = replies(&mut session, "position startpos");
+        let out = replies(&mut session, "go depth 1");
+        let best = out
+            .iter()
+            .find(|l| l.starts_with("bestmove "))
+            .expect("bestmove line");
+        let mv = best.strip_prefix("bestmove ").unwrap();
+        let legal: Vec<String> = generate_legal(&parse_fen(START_FEN).unwrap())
+            .iter()
+            .map(|m| m.to_string())
+            .collect();
+        assert!(legal.contains(&mv.to_string()), "got {mv}, legal={legal:?}");
+    }
+
+    #[test]
+    fn depth_1_go_reports_info_then_bestmove() {
+        let mut session = UciSession::new();
+        let _ = replies(&mut session, "position startpos");
+        let out = replies(&mut session, "go depth 1");
+        let info_i = out
+            .iter()
+            .position(|l| l.starts_with("info ") && l.contains("depth 1") && l.contains(" pv "))
+            .expect("info depth 1 with pv");
+        let best_i = out
+            .iter()
+            .position(|l| l.starts_with("bestmove "))
+            .expect("bestmove");
+        assert!(info_i < best_i, "info must precede bestmove: {out:?}");
+    }
+
+    #[test]
+    fn depth_2_go_reports_both_iterations() {
+        let mut session = UciSession::new();
+        let _ = replies(&mut session, "position startpos");
+        let out = replies(&mut session, "go depth 2");
+        assert!(
+            out.iter().any(|l| l.starts_with("info ") && l.contains("depth 1")),
+            "missing depth 1 info: {out:?}"
+        );
+        assert!(
+            out.iter().any(|l| l.starts_with("info ") && l.contains("depth 2")),
+            "missing depth 2 info: {out:?}"
+        );
+        let last_info = out.iter().rposition(|l| l.starts_with("info ")).unwrap();
+        let last_best = out.iter().rposition(|l| l.starts_with("bestmove ")).unwrap();
+        assert!(last_info < last_best, "info must precede bestmove: {out:?}");
+    }
+
+    #[test]
+    fn depth_1_captures_the_hanging_queen() {
+        let mut session = UciSession::new();
+        let _ = replies(
+            &mut session,
+            "position fen 4k3/8/8/8/7q/8/8/4K2R w - - 0 1",
+        );
+        let out = replies(&mut session, "go depth 1");
+        assert!(
+            out.iter().any(|l| l == "bestmove h1h4"),
+            "expected bestmove h1h4, got {out:?}"
+        );
+    }
+
+    #[test]
+    fn depth_1_mates_with_the_rook() {
+        let mut session = UciSession::new();
+        let _ = replies(
+            &mut session,
+            "position fen 6k1/4R3/6K1/8/8/8/8/8 w - - 0 1",
+        );
+        let out = replies(&mut session, "go depth 1");
+        assert!(
+            out.iter().any(|l| l == "bestmove e7e8"),
+            "expected bestmove e7e8, got {out:?}"
+        );
+        assert!(
+            out.iter()
+                .any(|l| l.starts_with("info ") && l.contains("score mate 1")),
+            "expected score mate 1, got {out:?}"
+        );
+    }
 }
