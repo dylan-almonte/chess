@@ -10,5 +10,5 @@
 
 ## 3. Gate
 
-- [ ] 3.1 Ensure every delta-spec scenario has a named `#[test]` and `cargo test` passes
-- [ ] 3.2 Run `openspec validate evaluation --strict` and fix any issues
+- [x] 3.1 Ensure every delta-spec scenario has a named `#[test]` and `cargo test` passes
+- [x] 3.2 Run `openspec validate evaluation --strict` and fix any issues
