@@ -1,7 +1,7 @@
 ## 1. Eval module skeleton
 
 - [x] 1.1 Add `src/eval.rs` with material constants (P=100, N=320, B=330, R=500, Q=900, K=0) and wire `mod eval` / `pub use evaluate` from `lib.rs` — verify with `cargo check`
-- [ ] 1.2 Add failing named tests for all evaluation delta-spec scenarios (startpos `0`, side-to-move invariance, queen imbalances, e4>e2 pawn, mirrored kings `0`) — verify tests compile and fail before implementation (`cargo test evaluate_ -- --nocapture` shows failures)
+- [x] 1.2 Add failing named tests for all evaluation delta-spec scenarios (startpos `0`, side-to-move invariance, queen imbalances, e4>e2 pawn, mirrored kings `0`) — verify tests compile and fail before implementation (`cargo test evaluate_ -- --nocapture` shows failures)
 
 ## 2. Material and PST
 

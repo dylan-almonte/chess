@@ -33,6 +33,7 @@ fn material_value(kind: PieceKind) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fen::parse_fen;
 
     #[test]
     fn material_constants_match_spec() {
@@ -42,5 +43,48 @@ mod tests {
         assert_eq!(material_value(PieceKind::Rook), 500);
         assert_eq!(material_value(PieceKind::Queen), 900);
         assert_eq!(material_value(PieceKind::King), 0);
+    }
+
+    #[test]
+    fn starting_position_is_equal() {
+        let pos = parse_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
+        assert_eq!(evaluate(&pos), 0);
+    }
+
+    #[test]
+    fn side_to_move_does_not_change_the_score() {
+        let white = parse_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
+        let black = parse_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1").unwrap();
+        assert_eq!(evaluate(&white), evaluate(&black));
+    }
+
+    #[test]
+    fn white_up_a_queen_is_material_positive() {
+        let pos = parse_fen("rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
+        assert!(evaluate(&pos) > 800, "score={}", evaluate(&pos));
+    }
+
+    #[test]
+    fn black_up_a_queen_is_material_negative() {
+        let pos = parse_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNB1KBNR w KQkq - 0 1").unwrap();
+        assert!(evaluate(&pos) < -800, "score={}", evaluate(&pos));
+    }
+
+    #[test]
+    fn central_white_pawn_outscores_starting_pawn() {
+        let e4 = parse_fen("4k3/8/8/8/4P3/8/8/4K3 w - - 0 1").unwrap();
+        let e2 = parse_fen("4k3/8/8/8/8/8/4P3/4K3 w - - 0 1").unwrap();
+        assert!(
+            evaluate(&e4) > evaluate(&e2),
+            "e4={} e2={}",
+            evaluate(&e4),
+            evaluate(&e2)
+        );
+    }
+
+    #[test]
+    fn kings_alone_remain_equal_when_mirrored() {
+        let pos = parse_fen("4k3/8/8/8/8/8/8/4K3 w - - 0 1").unwrap();
+        assert_eq!(evaluate(&pos), 0);
     }
 }
