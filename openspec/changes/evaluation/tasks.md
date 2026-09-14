@@ -6,7 +6,7 @@
 ## 2. Material and PST
 
 - [x] 2.1 Implement `evaluate(&Position) -> i32` material-only (White minus Black) — verify queen-imbalance scenarios pass (`> 800` / `< -800`)
-- [ ] 2.2 Add mirrored PST tables (`sq ^ 56` for Black) and include them in the score — verify startpos `0`, side-to-move invariance, mirrored kings `0`, and e4 pawn score > e2 pawn score
+- [x] 2.2 Add mirrored PST tables (`sq ^ 56` for Black) and include them in the score — verify startpos `0`, side-to-move invariance, mirrored kings `0`, and e4 pawn score > e2 pawn score
 
 ## 3. Gate
 

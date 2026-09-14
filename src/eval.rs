@@ -20,6 +20,89 @@ const MATERIAL: [i32; 6] = [
     KING_VALUE,
 ];
 
+/// Piece-square tables from White's perspective (a1 = 0 … h8 = 63).
+/// Adapted from the classic simplified evaluation function.
+#[rustfmt::skip]
+const PAWN_PST: [i32; 64] = [
+     0,  0,  0,  0,  0,  0,  0,  0,
+     5, 10, 10,-20,-20, 10, 10,  5,
+     5, -5,-10,  0,  0,-10, -5,  5,
+     0,  0,  0, 20, 20,  0,  0,  0,
+     5,  5, 10, 25, 25, 10,  5,  5,
+    10, 10, 20, 30, 30, 20, 10, 10,
+    50, 50, 50, 50, 50, 50, 50, 50,
+     0,  0,  0,  0,  0,  0,  0,  0,
+];
+
+#[rustfmt::skip]
+const KNIGHT_PST: [i32; 64] = [
+   -50,-40,-30,-30,-30,-30,-40,-50,
+   -40,-20,  0,  0,  0,  0,-20,-40,
+   -30,  0, 10, 15, 15, 10,  0,-30,
+   -30,  5, 15, 20, 20, 15,  5,-30,
+   -30,  0, 15, 20, 20, 15,  0,-30,
+   -30,  5, 10, 15, 15, 10,  5,-30,
+   -40,-20,  0,  5,  5,  0,-20,-40,
+   -50,-40,-30,-30,-30,-30,-40,-50,
+];
+
+#[rustfmt::skip]
+const BISHOP_PST: [i32; 64] = [
+   -20,-10,-10,-10,-10,-10,-10,-20,
+   -10,  5,  0,  0,  0,  0,  5,-10,
+   -10, 10, 10, 10, 10, 10, 10,-10,
+   -10,  0, 10, 10, 10, 10,  0,-10,
+   -10,  5,  5, 10, 10,  5,  5,-10,
+   -10,  0,  5, 10, 10,  5,  0,-10,
+   -10,  0,  0,  0,  0,  0,  0,-10,
+   -20,-10,-10,-10,-10,-10,-10,-20,
+];
+
+#[rustfmt::skip]
+const ROOK_PST: [i32; 64] = [
+     0,  0,  0,  5,  5,  0,  0,  0,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+    -5,  0,  0,  0,  0,  0,  0, -5,
+     5, 10, 10, 10, 10, 10, 10,  5,
+     0,  0,  0,  0,  0,  0,  0,  0,
+];
+
+#[rustfmt::skip]
+const QUEEN_PST: [i32; 64] = [
+   -20,-10,-10, -5, -5,-10,-10,-20,
+   -10,  0,  0,  0,  0,  0,  0,-10,
+   -10,  0,  5,  5,  5,  5,  0,-10,
+    -5,  0,  5,  5,  5,  5,  0, -5,
+     0,  0,  5,  5,  5,  5,  0, -5,
+   -10,  5,  5,  5,  5,  5,  0,-10,
+   -10,  0,  5,  0,  0,  0,  0,-10,
+   -20,-10,-10, -5, -5,-10,-10,-20,
+];
+
+#[rustfmt::skip]
+const KING_PST: [i32; 64] = [
+    20, 30, 10,  0,  0, 10, 30, 20,
+    20, 20,  0,  0,  0,  0, 20, 20,
+   -10,-20,-20,-20,-20,-20,-20,-10,
+   -20,-30,-30,-40,-40,-30,-30,-20,
+   -30,-40,-40,-50,-50,-40,-40,-30,
+   -30,-40,-40,-50,-50,-40,-40,-30,
+   -30,-40,-40,-50,-50,-40,-40,-30,
+   -30,-40,-40,-50,-50,-40,-40,-30,
+];
+
+const PST: [&[i32; 64]; 6] = [
+    &PAWN_PST,
+    &KNIGHT_PST,
+    &BISHOP_PST,
+    &ROOK_PST,
+    &QUEEN_PST,
+    &KING_PST,
+];
+
 /// Evaluate `pos` in centipawns from White's perspective (positive = White better).
 /// Side to move does not affect the score.
 pub fn evaluate(pos: &Position) -> i32 {
@@ -27,9 +110,18 @@ pub fn evaluate(pos: &Position) -> i32 {
     for color in [Color::White, Color::Black] {
         let sign = if color == Color::White { 1 } else { -1 };
         for kind in PieceKind::ALL {
-            let bb = pos.pieces[Piece::new(color, kind).bitboard_index()];
-            let count = bb.count_ones() as i32;
-            score += sign * count * material_value(kind);
+            let mut bb = pos.pieces[Piece::new(color, kind).bitboard_index()];
+            let pst = PST[kind.index()];
+            let mat = material_value(kind);
+            while bb != 0 {
+                let sq = bb.trailing_zeros() as usize;
+                bb &= bb - 1;
+                let pst_sq = match color {
+                    Color::White => sq,
+                    Color::Black => sq ^ 56,
+                };
+                score += sign * (mat + pst[pst_sq]);
+            }
         }
     }
     score
