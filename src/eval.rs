@@ -1,7 +1,7 @@
 //! Static evaluation: material + piece-square tables (centipawns, White-positive).
 
 use crate::board::Position;
-use crate::piece::PieceKind;
+use crate::piece::{Color, Piece, PieceKind};
 
 /// Material values in centipawns.
 pub const PAWN_VALUE: i32 = 100;
@@ -22,8 +22,17 @@ const MATERIAL: [i32; 6] = [
 
 /// Evaluate `pos` in centipawns from White's perspective (positive = White better).
 /// Side to move does not affect the score.
-pub fn evaluate(_pos: &Position) -> i32 {
-    0
+pub fn evaluate(pos: &Position) -> i32 {
+    let mut score = 0;
+    for color in [Color::White, Color::Black] {
+        let sign = if color == Color::White { 1 } else { -1 };
+        for kind in PieceKind::ALL {
+            let bb = pos.pieces[Piece::new(color, kind).bitboard_index()];
+            let count = bb.count_ones() as i32;
+            score += sign * count * material_value(kind);
+        }
+    }
+    score
 }
 
 fn material_value(kind: PieceKind) -> i32 {
