@@ -1,4 +1,4 @@
-//! Chess engine library — board representation, FEN, move generation, and UCI.
+//! Chess engine library — board representation, FEN, move generation, search, and UCI.
 
 pub mod board;
 pub mod eval;
@@ -8,6 +8,7 @@ pub mod movegen;
 pub mod moves;
 pub mod perft;
 pub mod piece;
+pub mod search;
 pub mod square;
 pub mod uci;
 
@@ -19,5 +20,6 @@ pub use movegen::{generate_legal, generate_pseudo_legal, is_square_attacked};
 pub use moves::Move;
 pub use perft::perft;
 pub use piece::{Color, Piece, PieceKind};
+pub use search::{search, SearchResult, MATE};
 pub use square::Square;
 pub use uci::{UciAction, UciSession};
