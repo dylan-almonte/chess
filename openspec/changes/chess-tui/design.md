@@ -70,3 +70,7 @@ Rust engine with archived `board-representation`, `move-generation`, and `uci-pr
 ## Open Questions
 
 - Exact Go chess helper vs hand-rolled display state — choose during apply; does not change specs if board/move observables hold.
+
+## Follow-ups (not this change)
+
+Tracked in `tasks.md` §6: Unicode piece glyphs, mouse click-to-move, optional cursor selection. Spin a new OpenSpec change (e.g. `tui-polish`) when implementing.

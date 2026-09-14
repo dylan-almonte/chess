@@ -23,3 +23,9 @@
 
 - [x] 5.1 Ensure every delta-spec scenario has an automated test and `go test ./...` passes under `tui/`
 - [x] 5.2 Run `openspec validate chess-tui --strict` and fix any issues
+
+## 6. Future polish (out of scope for this change — promote to a new OpenSpec change when ready)
+
+- [ ] 6.1 Unicode piece glyphs in board render (map ASCII `KQRBNP` ↔ ♔♕♖♗♘♙ / ♚♛♜♝♞♟), optional ASCII toggle — verify board still updates after human/engine moves
+- [ ] 6.2 Mouse cell motion: click square to select, second click builds UCI move and uses the same play path as typed input; keep keyboard entry primary — verify click→move against fake engine
+- [ ] 6.3 (Optional) Cursor / arrow-key selection as a middle ground between typing UCI and mouse — verify select+confirm still sends legal UCI moves

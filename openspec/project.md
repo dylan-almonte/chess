@@ -46,3 +46,9 @@ Build a from-scratch UCI chess engine in Rust, plus a terminal UI client so deve
 - Board: 12 piece bitboards + derived occupancy; no magic bitboards until move-gen needs them
 - Prefer make/unmake over copy-make once move generation exists
 - TUI must not embed a second competing engine; it is a viewer/controller over UCI
+
+
+## Backlog
+
+- TUI: Unicode pieces + mouse click-to-move (`tui-polish`)
+- Engine: search (iterative deepening + alpha-beta)
