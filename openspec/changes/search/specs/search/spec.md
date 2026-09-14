@@ -49,11 +49,11 @@ When the side to move has no legal moves, search MUST NOT return a best move. If
 Iterative deepening MUST search depth `1`, then `2`, up through the requested maximum. A capture that wins material at depth `1` MUST be rejected at depth `2` when the opponent recaptures and the net result is worse than not taking.
 
 #### Scenario: Depth 1 takes a defended pawn
-- **GIVEN** FEN `3k4/8/8/3p4/4Q3/8/8/4K3 w - - 0 1` (White queen e4, Black pawn d5 protected by the king on d8)
+- **GIVEN** FEN `8/8/3k4/3p4/4Q3/8/8/4K3 w - - 0 1` (White queen e4, Black pawn d5 protected by the king on d6)
 - **WHEN** the position is searched to depth `1`
 - **THEN** the best move is `e4d5`
 
 #### Scenario: Depth 2 refuses the same capture
-- **GIVEN** FEN `3k4/8/8/3p4/4Q3/8/8/4K3 w - - 0 1`
+- **GIVEN** FEN `8/8/3k4/3p4/4Q3/8/8/4K3 w - - 0 1`
 - **WHEN** the position is searched to depth `2`
 - **THEN** the best move is not `e4d5`

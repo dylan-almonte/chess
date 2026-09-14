@@ -1,10 +1,15 @@
-//! Search: iterative-deepening negamax with alpha-beta (stub until wired).
+//! Search: iterative-deepening negamax with alpha-beta.
 
 use crate::board::Position;
+use crate::eval::evaluate;
+use crate::makemove::{make_move, unmake_move};
+use crate::movegen::{generate_legal, in_check};
 use crate::moves::Move;
+use crate::piece::Color;
 
 /// Mate score in centipawns; distance from the root is subtracted so shorter mates score higher.
 pub const MATE: i32 = 30_000;
+const INF: i32 = 32_000;
 
 /// Result of a search to a given maximum depth.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -16,20 +21,61 @@ pub struct SearchResult {
     pub nodes: u64,
 }
 
-impl SearchResult {
-    fn empty() -> Self {
-        Self {
-            best_move: None,
-            score: 0,
-            pv: Vec::new(),
-            nodes: 0,
-        }
+/// Search `pos` to `max_depth` plies.
+pub fn search(pos: &Position, max_depth: u32) -> SearchResult {
+    let mut pos = pos.clone();
+    let mut nodes = 0;
+    let (score, pv) = negamax(&mut pos, max_depth, 0, &mut nodes);
+    SearchResult {
+        best_move: pv.first().copied(),
+        score,
+        pv,
+        nodes,
     }
 }
 
-/// Search `pos` to `max_depth` plies. Stub: no look-ahead yet.
-pub fn search(_pos: &Position, _max_depth: u32) -> SearchResult {
-    SearchResult::empty()
+fn stm_eval(pos: &Position) -> i32 {
+    let score = evaluate(pos);
+    match pos.side_to_move {
+        Color::White => score,
+        Color::Black => -score,
+    }
+}
+
+fn negamax(pos: &mut Position, depth: u32, ply: i32, nodes: &mut u64) -> (i32, Vec<Move>) {
+    *nodes += 1;
+
+    if depth == 0 && !in_check(pos, pos.side_to_move) {
+        return (stm_eval(pos), Vec::new());
+    }
+
+    let moves = generate_legal(pos);
+    if moves.is_empty() {
+        if in_check(pos, pos.side_to_move) {
+            return (-MATE + ply, Vec::new());
+        }
+        return (0, Vec::new());
+    }
+
+    if depth == 0 {
+        return (stm_eval(pos), Vec::new());
+    }
+
+    let mut best_score = -INF;
+    let mut best_pv = Vec::new();
+    for mv in moves {
+        let undo = make_move(pos, mv);
+        let (child_score, child_pv) = negamax(pos, depth - 1, ply + 1, nodes);
+        unmake_move(pos, mv, undo);
+        let score = -child_score;
+        if score > best_score {
+            best_score = score;
+            best_pv.clear();
+            best_pv.push(mv);
+            best_pv.extend(child_pv);
+        }
+    }
+    (best_score, best_pv)
 }
 
 /// Convert a mate score to UCI-style mate-in-N moves (signed, STM-relative).
@@ -55,7 +101,7 @@ mod tests {
     const ROOK_MATE: &str = "6k1/4R3/6K1/8/8/8/8/8 w - - 0 1";
     const CHECKMATE: &str = "7k/6Q1/6K1/8/8/8/8/8 b - - 0 1";
     const STALEMATE: &str = "7k/5Q2/6K1/8/8/8/8/8 b - - 0 1";
-    const DEFENDED_PAWN: &str = "3k4/8/8/3p4/4Q3/8/8/4K3 w - - 0 1";
+    const DEFENDED_PAWN: &str = "8/8/3k4/3p4/4Q3/8/8/4K3 w - - 0 1";
 
     fn pos(fen: &str) -> Position {
         parse_fen(fen).expect("valid test FEN")
