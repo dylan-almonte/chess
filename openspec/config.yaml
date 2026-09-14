@@ -1,30 +1,31 @@
 schema: spec-driven
 
 context: |
-  From-scratch UCI chess engine in Rust 2024. Library + binary (src/lib.rs + src/main.rs).
-  No third-party chess crates. Specs describe observable behavior (FEN, moves, perft, UCI);
-  representation choices live in design.md. Every scenario maps to a named Rust test.
-  One OpenSpec change per engine layer. Square indexing: a1=0 … h8=63 (LERF).
-  See openspec/project.md for full conventions.
+  Monorepo: Rust UCI engine at repo root (2024, no third-party chess crates) plus Go Bubble Tea
+  TUI under tui/ that talks UCI to the engine subprocess. Specs describe observable behavior
+  (FEN, moves, perft, UCI, TUI panels); design holds implementation. Engine tests are named
+  Rust #[test]s; TUI tests are Go/Bubble Tea tests. One OpenSpec change per capability.
+  Square indexing: a1=0 … h8=63 (LERF). See openspec/project.md for full conventions.
 
 rules:
   proposal:
     - Include Non-goals section
-    - Keep scope to a single engine layer
+    - Keep scope to a single capability (one engine layer or the TUI client)
   specs:
     - Use Given/When/Then scenarios
-    - Prefer concrete FEN strings and numeric expectations
+    - Prefer concrete FEN strings, UCI lines, and numeric expectations
   design:
-    - Document bitboard layout and square indexing when relevant
+    - Document bitboard layout and square indexing when relevant to the engine
+    - For TUI changes, document process/UCI boundaries and panel layout
   tasks:
     - Order tasks so tests can go red then green
-    - End with cargo test and openspec validate
+    - End with validate (cargo test and/or go test as applicable) and openspec validate
 
 operations:
   apply:
     guidance:
       - Implement tasks in order; mark checkboxes when done
-      - Keep main.rs a stub until the uci-protocol change
+      - Keep the Rust UCI binary as the engine entry; put Bubble Tea code under tui/
   archive:
     guidance:
-      - Confirm cargo test is green before archiving
+      - Confirm relevant tests are green before archiving
