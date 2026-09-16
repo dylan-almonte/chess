@@ -259,6 +259,8 @@ func StubHandler(line string) []string {
 		return nil
 	case strings.HasPrefix(line, "position"):
 		return nil
+	case line == "legalmoves":
+		return []string{"legalmoves " + strings.Join(startposLegalMoves(), " ")}
 	case strings.HasPrefix(line, "go"):
 		return []string{"bestmove e7e5"}
 	case line == "quit":
@@ -274,4 +276,117 @@ func InfoStubHandler(line string) []string {
 		return []string{"info depth 1 score cp 12 pv e2e4", "bestmove e7e5"}
 	}
 	return StubHandler(line)
+}
+
+// StatefulHandler is a fake engine that tracks position, responds to legalmoves,
+// and supports configurable bestmove responses for testing.
+type StatefulHandler struct {
+	// moves tracks the move history from the last position command
+	moves []string
+	// legalSets maps a moves-key (space-joined move list) to the legal moves for that position.
+	// An empty string key is the startpos legal set.
+	legalSets map[string][]string
+	// bestmoveOverride, if set, is returned instead of the default bestmove
+	bestmoveOverride string
+	// infoLine, if set, is emitted before bestmove
+	infoLine string
+}
+
+// NewStatefulHandler creates a StatefulHandler with standard startpos legal moves.
+func NewStatefulHandler() *StatefulHandler {
+	h := &StatefulHandler{
+		legalSets: map[string][]string{
+			"": startposLegalMoves(),
+		},
+	}
+	return h
+}
+
+// SetLegalMoves sets the legal move set for a given move-history key.
+func (h *StatefulHandler) SetLegalMoves(movesKey string, moves []string) {
+	h.legalSets[movesKey] = moves
+}
+
+// SetBestmove configures the bestmove reply for the next go command.
+func (h *StatefulHandler) SetBestmove(mv string) {
+	h.bestmoveOverride = mv
+}
+
+// SetInfoBeforeBestmove configures an info line to emit before bestmove.
+func (h *StatefulHandler) SetInfoBeforeBestmove(line string) {
+	h.infoLine = line
+}
+
+// Handle processes one UCI line (used as the FakeHandler function).
+func (h *StatefulHandler) Handle(line string) []string {
+	switch {
+	case line == "uci":
+		return []string{"id name fake-stateful", "id author test", "uciok"}
+	case line == "isready":
+		return []string{"readyok"}
+	case line == "ucinewgame":
+		h.moves = nil
+		return nil
+	case strings.HasPrefix(line, "position"):
+		h.handlePosition(line)
+		return nil
+	case line == "legalmoves":
+		return []string{h.legalmovesResponse()}
+	case strings.HasPrefix(line, "go"):
+		mv := h.bestmoveOverride
+		if mv == "" {
+			mv = h.defaultBestmove()
+		}
+		h.bestmoveOverride = ""
+		var replies []string
+		if h.infoLine != "" {
+			replies = append(replies, h.infoLine)
+		}
+		replies = append(replies, "bestmove "+mv)
+		return replies
+	case line == "quit":
+		return nil
+	default:
+		return nil
+	}
+}
+
+func (h *StatefulHandler) handlePosition(line string) {
+	h.moves = nil
+	if idx := strings.Index(line, " moves "); idx >= 0 {
+		rest := line[idx+len(" moves "):]
+		if rest = strings.TrimSpace(rest); rest != "" {
+			h.moves = strings.Fields(rest)
+		}
+	}
+}
+
+func (h *StatefulHandler) movesKey() string {
+	return strings.Join(h.moves, " ")
+}
+
+func (h *StatefulHandler) legalmovesResponse() string {
+	key := h.movesKey()
+	moves, ok := h.legalSets[key]
+	if !ok || len(moves) == 0 {
+		return "legalmoves"
+	}
+	return "legalmoves " + strings.Join(moves, " ")
+}
+
+func (h *StatefulHandler) defaultBestmove() string {
+	key := h.movesKey()
+	moves, ok := h.legalSets[key]
+	if ok && len(moves) > 0 {
+		return moves[0]
+	}
+	return "0000"
+}
+
+func startposLegalMoves() []string {
+	return []string{
+		"a2a3", "a2a4", "b2b3", "b2b4", "c2c3", "c2c4", "d2d3", "d2d4",
+		"e2e3", "e2e4", "f2f3", "f2f4", "g2g3", "g2g4", "h2h3", "h2h4",
+		"b1a3", "b1c3", "g1f3", "g1h3",
+	}
 }

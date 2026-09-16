@@ -39,6 +39,24 @@ func (b Board) At(sq int) Piece {
 	return b.sq[sq]
 }
 
+// ClearSquare sets the named square to empty.
+func (b *Board) ClearSquare(name string) {
+	sq, err := ParseSquare(name)
+	if err != nil {
+		return
+	}
+	b.sq[sq] = Empty
+}
+
+// SetSquare places a piece (given as a byte, e.g. 'P', 'p') on the named square.
+func (b *Board) SetSquare(name string, p byte) {
+	sq, err := ParseSquare(name)
+	if err != nil {
+		return
+	}
+	b.sq[sq] = Piece(p)
+}
+
 func (b Board) PieceAtName(name string) Piece {
 	sq, err := ParseSquare(name)
 	if err != nil {

@@ -34,21 +34,25 @@ type Config struct {
 
 // Model is the Bubble Tea app state.
 type Model struct {
-	cfg      Config
-	phase    phase
-	errMsg   string
-	client   *engine.Client
-	board    board.Board
-	moves    []string
-	logLines []string
-	tele     info.Telemetry
-	input    textinput.Model
-	logView  viewport.Model
-	waiting  bool
-	width    int
-	height   int
-	ready    bool
-	inbox    chan tea.Msg
+	cfg           Config
+	phase         phase
+	errMsg        string
+	client        *engine.Client
+	board         board.Board
+	moves         []string
+	logLines      []string
+	tele          info.Telemetry
+	input         textinput.Model
+	logView       viewport.Model
+	waiting       bool
+	width         int
+	height        int
+	ready         bool
+	inbox         chan tea.Msg
+	legalMoves    map[string]bool // current legal move set from engine
+	engineLegal   map[string]bool // legal set for the engine's side (fetched before go)
+	awaitingLegal bool            // waiting for legalmoves response
+	pendingGo     bool            // need to send go after receiving engine-side legalmoves
 }
 
 func New(cfg Config) Model {
@@ -200,20 +204,59 @@ func (m Model) handleLine(text string) (Model, tea.Cmd) {
 			m.input.Focus()
 			_ = m.send("ucinewgame")
 			_ = m.send("position startpos")
+			_ = m.send("legalmoves")
+			m.awaitingLegal = true
 		}
 	case phasePlay:
 		if t, ok := info.ParseInfo(text); ok {
 			m.tele = t
+		}
+		if strings.HasPrefix(text, "legalmoves") {
+			set := make(map[string]bool)
+			parts := strings.Fields(text)
+			for _, mv := range parts[1:] {
+				set[mv] = true
+			}
+			if m.pendingGo {
+				// This is the engine-side legal set before go
+				m.engineLegal = set
+				m.pendingGo = false
+				_ = m.send("go")
+			} else {
+				// This is the human-side legal set
+				m.legalMoves = set
+				m.awaitingLegal = false
+			}
 		}
 		if strings.HasPrefix(text, "bestmove") {
 			m.waiting = false
 			parts := strings.Fields(text)
 			if len(parts) >= 2 && parts[1] != "(none)" {
 				mv := parts[1]
-				if err := m.board.ApplyUCI(mv); err == nil {
-					m.moves = append(m.moves, mv)
+				// Validate bestmove against the engine-side legal set
+				if mv == "0000" {
+					if len(m.engineLegal) != 0 {
+						m.logLines = append(m.logLines, "! illegal engine move: 0000 (legal moves exist)")
+						m.refreshLogView()
+					}
+					// null move in checkmate/stalemate — no board change
+				} else if m.engineLegal != nil && !m.engineLegal[mv] {
+					m.logLines = append(m.logLines, fmt.Sprintf("! illegal engine move: %s", mv))
+					m.refreshLogView()
+				} else {
+					if err := m.board.ApplyUCI(mv); err == nil {
+						m.moves = append(m.moves, mv)
+						// Synchronize full history
+						pos := "position startpos moves " + strings.Join(m.moves, " ")
+						_ = m.send(pos)
+						// Refresh legal moves for human side
+						_ = m.send("legalmoves")
+						m.awaitingLegal = true
+						m.legalMoves = nil
+					}
 				}
 			}
+			m.engineLegal = nil
 		}
 	}
 	return m, nil
@@ -259,7 +302,13 @@ func (m Model) submitInput() (tea.Model, tea.Cmd) {
 	if raw == "quit" || raw == "q" {
 		return m.beginQuit()
 	}
-	if m.waiting {
+	if m.waiting || m.awaitingLegal {
+		return m, nil
+	}
+	// Gate on legal move set
+	if m.legalMoves != nil && !m.legalMoves[raw] {
+		m.logLines = append(m.logLines, fmt.Sprintf("! illegal move: %s", raw))
+		m.refreshLogView()
 		return m, nil
 	}
 	if err := m.board.ApplyUCI(raw); err != nil {
@@ -268,9 +317,12 @@ func (m Model) submitInput() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.moves = append(m.moves, raw)
+	m.legalMoves = nil // clear until refreshed
 	pos := "position startpos moves " + strings.Join(m.moves, " ")
 	_ = m.send(pos)
-	_ = m.send("go")
+	// Request engine-side legal set before go
+	_ = m.send("legalmoves")
+	m.pendingGo = true
 	m.waiting = true
 	if m.inbox != nil {
 		return m, waitInbox(m.inbox)
@@ -336,6 +388,7 @@ func (m Model) ClientLog() []engine.LogEntry {
 }
 
 func (m Model) PhaseReady() bool          { return m.ready && m.phase == phasePlay }
+func (m Model) LegalReady() bool          { return m.PhaseReady() && !m.awaitingLegal }
 func (m Model) PhaseError() bool          { return m.phase == phaseError }
 func (m Model) ErrorText() string         { return m.errMsg }
 func (m Model) LogText() string           { return strings.Join(m.logLines, "\n") }
