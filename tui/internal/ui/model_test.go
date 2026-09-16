@@ -400,6 +400,48 @@ func TestIllegalEngineBestmoveRejected(t *testing.T) {
 	}
 }
 
+func TestAdvertisedHumanMoveDisplayFailureIsVisibleWithoutMutation(t *testing.T) {
+	h := engine.NewStatefulHandler()
+	h.SetLegalMoves("", []string{"e3e4"})
+	m := connectStateful(t, h)
+
+	m.SetInputValue("e3e4")
+	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = model.(ui.Model)
+
+	if len(m.Moves()) != 0 {
+		t.Fatalf("display failure must not append a move, got %v", m.Moves())
+	}
+	if m.Board().PieceAtName("e3") != 0 || m.Board().PieceAtName("e4") != 0 {
+		t.Fatal("display failure must leave the board unchanged")
+	}
+	if !strings.Contains(m.LogText(), "empty origin e3") {
+		t.Fatalf("expected visible display error, got:\n%s", m.LogText())
+	}
+}
+
+func TestAdvertisedEngineMoveDisplayFailureIsVisibleWithoutMutation(t *testing.T) {
+	h := engine.NewStatefulHandler()
+	h.SetLegalMoves("e2e4", []string{"e3e4"})
+	m := connectStateful(t, h)
+
+	m.SetInputValue("e2e4")
+	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = pump(t, model, cmd, func(u ui.Model) bool {
+		return strings.Contains(u.LogText(), "cannot display advertised engine move")
+	}, 80)
+
+	if got := m.Moves(); len(got) != 1 || got[0] != "e2e4" {
+		t.Fatalf("display failure must preserve accepted history, got %v", got)
+	}
+	if m.Board().PieceAtName("e4") != 'P' || m.Board().PieceAtName("e3") != 0 {
+		t.Fatal("display failure must preserve the board after e2e4")
+	}
+	if !strings.Contains(m.LogText(), "e3e4") {
+		t.Fatalf("expected display error to identify e3e4, got:\n%s", m.LogText())
+	}
+}
+
 // Helper: black legal moves after e2e4
 func blackAfterE4() []string {
 	return []string{

@@ -30,7 +30,11 @@ func TestRealEngineE2E4SyncAndLegalmoves(t *testing.T) {
 	// Build the engine
 	buildCmd := exec.Command("cargo", "build", "--release")
 	buildCmd.Dir = repoRoot
-	buildCmd.Env = append(os.Environ(), "DEVELOPER_DIR=/Library/Developer/CommandLineTools")
+	buildCmd.Env = append(
+		os.Environ(),
+		"DEVELOPER_DIR=/Library/Developer/CommandLineTools",
+		"CARGO_TARGET_DIR="+filepath.Join(repoRoot, "target"),
+	)
 	if out, err := buildCmd.CombinedOutput(); err != nil {
 		t.Fatalf("cargo build failed: %v\n%s", err, out)
 	}
@@ -44,9 +48,9 @@ func TestRealEngineE2E4SyncAndLegalmoves(t *testing.T) {
 	m := ui.New(ui.Config{EnginePath: enginePath})
 	cmd := m.Init()
 
-	// Pump to ready state
+	// Pump until the initial legal move set is available for human input.
 	um := pump(t, m, cmd, func(u ui.Model) bool {
-		return u.PhaseReady()
+		return u.LegalReady()
 	}, 100)
 
 	// Submit e2e4

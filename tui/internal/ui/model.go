@@ -244,7 +244,13 @@ func (m Model) handleLine(text string) (Model, tea.Cmd) {
 					m.logLines = append(m.logLines, fmt.Sprintf("! illegal engine move: %s", mv))
 					m.refreshLogView()
 				} else {
-					if err := m.board.ApplyUCI(mv); err == nil {
+					candidate := m.board
+					if err := candidate.ApplyUCI(mv); err != nil {
+						m.logLines = append(m.logLines,
+							fmt.Sprintf("! cannot display advertised engine move %s: %v", mv, err))
+						m.refreshLogView()
+					} else {
+						m.board = candidate
 						m.moves = append(m.moves, mv)
 						// Synchronize full history
 						pos := "position startpos moves " + strings.Join(m.moves, " ")
@@ -302,7 +308,7 @@ func (m Model) submitInput() (tea.Model, tea.Cmd) {
 	if raw == "quit" || raw == "q" {
 		return m.beginQuit()
 	}
-	if m.waiting || m.awaitingLegal {
+	if m.waiting || m.awaitingLegal || m.legalMoves == nil {
 		return m, nil
 	}
 	// Gate on legal move set
@@ -311,11 +317,13 @@ func (m Model) submitInput() (tea.Model, tea.Cmd) {
 		m.refreshLogView()
 		return m, nil
 	}
-	if err := m.board.ApplyUCI(raw); err != nil {
+	candidate := m.board
+	if err := candidate.ApplyUCI(raw); err != nil {
 		m.logLines = append(m.logLines, "! "+err.Error())
 		m.refreshLogView()
 		return m, nil
 	}
+	m.board = candidate
 	m.moves = append(m.moves, raw)
 	m.legalMoves = nil // clear until refreshed
 	pos := "position startpos moves " + strings.Join(m.moves, " ")
