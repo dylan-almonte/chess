@@ -14,12 +14,12 @@ pub mod uci;
 
 pub use board::Position;
 pub use eval::evaluate;
-pub use fen::{parse_fen, to_fen, FenError};
-pub use makemove::{make_move, unmake_move, Undo};
+pub use fen::{FenError, parse_fen, to_fen};
+pub use makemove::{Undo, make_move, unmake_move};
 pub use movegen::{generate_legal, generate_pseudo_legal, is_square_attacked};
 pub use moves::Move;
 pub use perft::perft;
 pub use piece::{Color, Piece, PieceKind};
-pub use search::{mate_in, search, search_iter, SearchResult, MATE};
+pub use search::{MATE, SearchResult, mate_in, search, search_iter};
 pub use square::Square;
 pub use uci::{UciAction, UciSession};

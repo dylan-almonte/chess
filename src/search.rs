@@ -28,7 +28,11 @@ pub fn search(pos: &Position, max_depth: u32) -> SearchResult {
 }
 
 /// Like [`search`], invoking `on_iteration` after each completed depth.
-pub fn search_iter(pos: &Position, max_depth: u32, mut on_iteration: impl FnMut(&SearchResult)) -> SearchResult {
+pub fn search_iter(
+    pos: &Position,
+    max_depth: u32,
+    mut on_iteration: impl FnMut(&SearchResult),
+) -> SearchResult {
     let max_depth = max_depth.max(1);
     let mut last = SearchResult {
         best_move: None,
@@ -112,8 +116,7 @@ fn negamax(
     let mut best_pv = Vec::new();
     for mv in moves {
         let undo = make_move(pos, mv);
-        let (child_score, child_pv) =
-            negamax(pos, depth - 1, -beta, -alpha, ply + 1, nodes, None);
+        let (child_score, child_pv) = negamax(pos, depth - 1, -beta, -alpha, ply + 1, nodes, None);
         unmake_move(pos, mv, undo);
         let score = -child_score;
         if score > best_score {
@@ -145,10 +148,10 @@ pub fn mate_in(score: i32) -> Option<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Position;
     use crate::fen::parse_fen;
     use crate::makemove::make_move;
     use crate::movegen::generate_legal;
-    use crate::Position;
 
     const START: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
     const HANGING_QUEEN: &str = "4k3/8/8/8/7q/8/8/4K2R w - - 0 1";
@@ -173,17 +176,17 @@ mod tests {
     }
 
     fn best_uci(result: &SearchResult) -> String {
-        result
-            .best_move
-            .expect("expected a best move")
-            .to_string()
+        result.best_move.expect("expected a best move").to_string()
     }
 
     #[test]
     fn search_depth_1_from_startpos_is_legal() {
         let start = pos(START);
         let result = search(&start, 1);
-        let legal: Vec<String> = generate_legal(&start).iter().map(ToString::to_string).collect();
+        let legal: Vec<String> = generate_legal(&start)
+            .iter()
+            .map(ToString::to_string)
+            .collect();
         let best = best_uci(&result);
         assert!(legal.contains(&best), "got {best}, legal={legal:?}");
         assert!(!result.pv.is_empty());

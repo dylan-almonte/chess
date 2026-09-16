@@ -9,11 +9,7 @@ pub struct Square(u8);
 
 impl Square {
     pub const fn new(index: u8) -> Option<Self> {
-        if index < 64 {
-            Some(Self(index))
-        } else {
-            None
-        }
+        if index < 64 { Some(Self(index)) } else { None }
     }
 
     /// # Safety

@@ -1,6 +1,6 @@
 //! FEN parse and serialize.
 
-use crate::board::{Position, CASTLE_BK, CASTLE_BQ, CASTLE_WK, CASTLE_WQ};
+use crate::board::{CASTLE_BK, CASTLE_BQ, CASTLE_WK, CASTLE_WQ, Position};
 use crate::piece::{Color, Piece};
 use crate::square::Square;
 
@@ -87,15 +87,14 @@ pub fn parse_fen(fen: &str) -> Result<Position, FenError> {
     pos.en_passant = if ep == "-" {
         None
     } else {
-        Some(ep.parse::<Square>().map_err(|_| FenError::InvalidEnPassant)?)
+        Some(
+            ep.parse::<Square>()
+                .map_err(|_| FenError::InvalidEnPassant)?,
+        )
     };
 
-    pos.halfmove_clock = halfmove
-        .parse()
-        .map_err(|_| FenError::InvalidHalfmove)?;
-    pos.fullmove_number = fullmove
-        .parse()
-        .map_err(|_| FenError::InvalidFullmove)?;
+    pos.halfmove_clock = halfmove.parse().map_err(|_| FenError::InvalidHalfmove)?;
+    pos.fullmove_number = fullmove.parse().map_err(|_| FenError::InvalidFullmove)?;
     if pos.fullmove_number == 0 {
         return Err(FenError::InvalidFullmove);
     }

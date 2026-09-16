@@ -1,6 +1,6 @@
 //! Make and unmake moves on a [`Position`].
 
-use crate::board::{Position, CASTLE_BK, CASTLE_BQ, CASTLE_WK, CASTLE_WQ};
+use crate::board::{CASTLE_BK, CASTLE_BQ, CASTLE_WK, CASTLE_WQ, Position};
 use crate::moves::Move;
 use crate::piece::{Color, Piece, PieceKind};
 use crate::square::Square;

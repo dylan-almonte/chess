@@ -88,12 +88,8 @@ impl FromStr for Move {
         if bytes.len() < 4 || bytes.len() > 5 {
             return Err(());
         }
-        let from: Square = std::str::from_utf8(&bytes[0..2])
-            .map_err(|_| ())?
-            .parse()?;
-        let to: Square = std::str::from_utf8(&bytes[2..4])
-            .map_err(|_| ())?
-            .parse()?;
+        let from: Square = std::str::from_utf8(&bytes[0..2]).map_err(|_| ())?.parse()?;
+        let to: Square = std::str::from_utf8(&bytes[2..4]).map_err(|_| ())?.parse()?;
         let mut mv = Move::new(from, to);
         if bytes.len() == 5 {
             let kind = match bytes[4] {

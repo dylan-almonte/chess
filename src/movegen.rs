@@ -1,8 +1,8 @@
 //! Attack generation and move generation.
 
-use crate::board::{Position, CASTLE_BK, CASTLE_BQ, CASTLE_WK, CASTLE_WQ};
+use crate::board::{CASTLE_BK, CASTLE_BQ, CASTLE_WK, CASTLE_WQ, Position};
 use crate::makemove::make_move;
-use crate::moves::{Move, FLAG_CAPTURE, FLAG_CASTLE, FLAG_DOUBLE_PAWN, FLAG_EN_PASSANT};
+use crate::moves::{FLAG_CAPTURE, FLAG_CASTLE, FLAG_DOUBLE_PAWN, FLAG_EN_PASSANT, Move};
 use crate::piece::{Color, Piece, PieceKind};
 use crate::square::Square;
 
@@ -224,9 +224,7 @@ fn gen_pawn_moves(pos: &Position, color: Color, list: &mut Vec<Move>) {
                     if from.rank() == start_rank {
                         if let Some(two) = shift_square(from, 0, forward * 2) {
                             if occ & two.bit() == 0 {
-                                list.push(
-                                    Move::new(from, two).with_flags(FLAG_DOUBLE_PAWN),
-                                );
+                                list.push(Move::new(from, two).with_flags(FLAG_DOUBLE_PAWN));
                             }
                         }
                     }
@@ -307,15 +305,15 @@ fn gen_castling(pos: &Position, color: Color, list: &mut Vec<Move>) {
         Color::White => {
             let e1 = Square::from_index_unchecked(4);
             if pos.has_castling(CASTLE_WK)
-                && occ & (Square::from_index_unchecked(5).bit() | Square::from_index_unchecked(6).bit())
+                && occ
+                    & (Square::from_index_unchecked(5).bit()
+                        | Square::from_index_unchecked(6).bit())
                     == 0
                 && !is_square_attacked(pos, e1, enemy)
                 && !is_square_attacked(pos, Square::from_index_unchecked(5), enemy)
                 && !is_square_attacked(pos, Square::from_index_unchecked(6), enemy)
             {
-                list.push(
-                    Move::new(e1, Square::from_index_unchecked(6)).with_flags(FLAG_CASTLE),
-                );
+                list.push(Move::new(e1, Square::from_index_unchecked(6)).with_flags(FLAG_CASTLE));
             }
             if pos.has_castling(CASTLE_WQ)
                 && occ
@@ -327,9 +325,7 @@ fn gen_castling(pos: &Position, color: Color, list: &mut Vec<Move>) {
                 && !is_square_attacked(pos, Square::from_index_unchecked(3), enemy)
                 && !is_square_attacked(pos, Square::from_index_unchecked(2), enemy)
             {
-                list.push(
-                    Move::new(e1, Square::from_index_unchecked(2)).with_flags(FLAG_CASTLE),
-                );
+                list.push(Move::new(e1, Square::from_index_unchecked(2)).with_flags(FLAG_CASTLE));
             }
         }
         Color::Black => {
@@ -343,9 +339,7 @@ fn gen_castling(pos: &Position, color: Color, list: &mut Vec<Move>) {
                 && !is_square_attacked(pos, Square::from_index_unchecked(61), enemy)
                 && !is_square_attacked(pos, Square::from_index_unchecked(62), enemy)
             {
-                list.push(
-                    Move::new(e8, Square::from_index_unchecked(62)).with_flags(FLAG_CASTLE),
-                );
+                list.push(Move::new(e8, Square::from_index_unchecked(62)).with_flags(FLAG_CASTLE));
             }
             if pos.has_castling(CASTLE_BQ)
                 && occ
@@ -357,9 +351,7 @@ fn gen_castling(pos: &Position, color: Color, list: &mut Vec<Move>) {
                 && !is_square_attacked(pos, Square::from_index_unchecked(59), enemy)
                 && !is_square_attacked(pos, Square::from_index_unchecked(58), enemy)
             {
-                list.push(
-                    Move::new(e8, Square::from_index_unchecked(58)).with_flags(FLAG_CASTLE),
-                );
+                list.push(Move::new(e8, Square::from_index_unchecked(58)).with_flags(FLAG_CASTLE));
             }
         }
     }
