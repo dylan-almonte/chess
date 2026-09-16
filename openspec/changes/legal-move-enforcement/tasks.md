@@ -27,4 +27,4 @@
 ## 5. Cross-layer validation
 
 - [x] 5.1 Build the Rust engine and run the real-process TUI integration test; verify the engine and displayed position remain synchronized after both plies
-- [ ] 5.2 Run `cargo fmt --check`, `cargo test`, `go test ./...` under `tui/`, and `openspec validate legal-move-enforcement --strict`; fix failures and commit only any resulting change-scoped fixes
+- [x] 5.2 Run `cargo fmt --check`, `cargo test`, `go test ./...` under `tui/`, and `openspec validate legal-move-enforcement --strict`; fix failures and commit only any resulting change-scoped fixes
