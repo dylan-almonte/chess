@@ -36,7 +36,7 @@ The engine MUST accept `position startpos`, `position startpos moves …`, `posi
 - **THEN** `bestmove` is a legal move in the position after `e2e4 e7e5`
 
 ### Requirement: Go returns a legal bestmove
-On `go`, the engine MUST output exactly one `bestmove <move>` line where `<move>` is a legal UCI move chosen by search for the current position. If `depth N` is present (`N` a positive integer), search MUST use maximum depth `N`. If `depth` is omitted, search MUST use maximum depth `4`. Time-control tokens (`wtime`, `btime`, `movetime`, `infinite`) MUST be ignored. If the side to move has no legal moves, the engine MUST output `bestmove 0000`.
+On `go`, the engine MUST output exactly one `bestmove <move>` line where `<move>` is a legal UCI move chosen by search for the current position, unless the command includes `infinite` (see below). If `depth N` is present (`N` a positive integer), search MUST use maximum depth `N`. If `depth` is omitted, search MUST use maximum depth `4`. Time-control tokens (`wtime`, `btime`, `movetime`) and `nodes` MUST be ignored. If the side to move has no legal moves, the `bestmove` line (when emitted) MUST be `bestmove 0000`.
 
 #### Scenario: Go from startpos returns a legal move
 - **GIVEN** position set with `position startpos`
@@ -82,6 +82,22 @@ On `go` in a position with at least one legal move, the engine MUST emit one or 
 - **WHEN** the command `go depth 1` is received
 - **THEN** the output includes the line `bestmove e7e8`
 - **AND** some preceding `info` line contains `score mate 1`
+
+### Requirement: Infinite search waits for stop
+When `go` includes the token `infinite`, the engine MUST search and MAY emit `info` lines, but MUST NOT emit `bestmove` until it later receives `stop`. After `stop`, it MUST emit exactly one `bestmove` line for that search. A `stop` with no pending infinite search MUST produce no output. GUIs such as Nibbler use this handshake when the user moves a piece while analysis is running.
+
+#### Scenario: Go infinite withholds bestmove until stop
+- **GIVEN** position set with `position startpos`
+- **WHEN** the command `go infinite` is received
+- **THEN** the output includes a line starting with `info`
+- **AND** the output does not include a `bestmove` line
+- **WHEN** the command `stop` is then received
+- **THEN** the output includes a line matching `bestmove <uci>` where `<uci>` is one of the legal moves from startpos
+
+#### Scenario: Stop with no search is silent
+- **GIVEN** a freshly started engine session
+- **WHEN** the command `stop` is received
+- **THEN** there is no output
 
 ### Requirement: Quit ends the session
 When the engine receives `quit`, it MUST stop reading further commands and exit successfully.

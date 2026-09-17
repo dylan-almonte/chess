@@ -263,6 +263,10 @@ func StubHandler(line string) []string {
 		return []string{"legalmoves " + strings.Join(startposLegalMoves(), " ")}
 	case strings.HasPrefix(line, "go"):
 		return []string{"bestmove e7e5"}
+	case line == "stop":
+		return nil
+	case strings.HasPrefix(line, "setoption"):
+		return nil
 	case line == "quit":
 		return nil
 	default:
@@ -344,6 +348,10 @@ func (h *StatefulHandler) Handle(line string) []string {
 		}
 		replies = append(replies, "bestmove "+mv)
 		return replies
+	case line == "stop":
+		return nil
+	case strings.HasPrefix(line, "setoption"):
+		return nil
 	case line == "quit":
 		return nil
 	default:

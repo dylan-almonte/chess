@@ -218,10 +218,11 @@ func (m Model) handleLine(text string) (Model, tea.Cmd) {
 				set[mv] = true
 			}
 			if m.pendingGo {
-				// This is the engine-side legal set before go
+				// This is the engine-side legal set before go.
+				// Use an explicit depth so we never rely on `go infinite` (Nibbler analysis).
 				m.engineLegal = set
 				m.pendingGo = false
-				_ = m.send("go")
+				_ = m.send("go depth 4")
 			} else {
 				// This is the human-side legal set
 				m.legalMoves = set

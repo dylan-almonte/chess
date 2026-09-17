@@ -29,6 +29,15 @@ export CHESS_ENGINE=/absolute/or/relative/path/to/chess
 go run .
 ```
 
+## Nibbler / other UCI GUIs
+
+The same `target/release/chess` binary speaks standard UCI:
+
+- Analysis (`go infinite` … `stop`) withholds `bestmove` until `stop` (Nibbler’s analysis loop)
+- Play / finite searches (`go`, `go depth N`, `go nodes N`) return `bestmove` immediately (this TUI uses `go depth 4`)
+
+Point Nibbler at the release binary. For the engine to move on the board, use Play White / Play Black / Self-play — drag-to-move in analysis only updates the position.
+
 ## Controls
 
 - Type a UCI long-algebraic move (e.g. `e2e4`) and press Enter
