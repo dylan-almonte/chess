@@ -27,6 +27,8 @@ pub enum UciAction {
 #[derive(Clone, Debug)]
 pub struct UciSession {
     pub position: Position,
+    /// Set while a `go infinite` search is waiting for `stop` before `bestmove`.
+    infinite: Option<SearchResult>,
 }
 
 impl Default for UciSession {
@@ -39,6 +41,7 @@ impl UciSession {
     pub fn new() -> Self {
         Self {
             position: parse_fen(START_FEN).expect("startpos FEN is valid"),
+            infinite: None,
         }
     }
 
@@ -59,12 +62,16 @@ impl UciSession {
                 "uciok".to_string(),
             ]),
             "isready" => UciAction::Reply(vec!["readyok".to_string()]),
+            // GUIs (Nibbler) send options we do not expose yet; acknowledge silently.
+            "setoption" => UciAction::Reply(vec![]),
             "ucinewgame" => {
                 self.position = parse_fen(START_FEN).expect("startpos FEN is valid");
+                self.infinite = None;
                 UciAction::Reply(vec![])
             }
             "position" => self.handle_position(line),
             "go" => UciAction::Reply(self.go_replies(line)),
+            "stop" => UciAction::Reply(self.stop_replies()),
             "legalmoves" => UciAction::Reply(vec![self.legalmoves_reply()]),
             "quit" => UciAction::Quit,
             _ => UciAction::Reply(vec![]),
@@ -72,6 +79,8 @@ impl UciSession {
     }
 
     fn handle_position(&mut self, line: &str) -> UciAction {
+        // A new position invalidates any pending infinite search result.
+        self.infinite = None;
         let rest = line.strip_prefix("position").unwrap_or("").trim_start();
         let (fen_part, moves_part) = split_moves(rest);
 
@@ -115,7 +124,8 @@ impl UciSession {
         format!("legalmoves {}", tokens.join(" "))
     }
 
-    fn go_replies(&self, line: &str) -> Vec<String> {
+    fn go_replies(&mut self, line: &str) -> Vec<String> {
+        self.infinite = None;
         let depth = parse_go_depth(line);
         let mut lines = Vec::new();
         let result = search_iter(&self.position, depth, |iter| {
@@ -123,11 +133,32 @@ impl UciSession {
                 lines.push(format_info(iter));
             }
         });
-        match result.best_move {
-            Some(mv) => lines.push(format!("bestmove {mv}")),
-            None => lines.push("bestmove 0000".to_string()),
+        if go_is_infinite(line) {
+            // Nibbler (and other GUIs) send `go infinite` then later `stop`.
+            // Emitting `bestmove` early makes the GUI think the search ended.
+            self.infinite = Some(result);
+            return lines;
         }
+        lines.push(format_bestmove(&result));
         lines
+    }
+
+    fn stop_replies(&mut self) -> Vec<String> {
+        match self.infinite.take() {
+            Some(result) => vec![format_bestmove(&result)],
+            None => vec![],
+        }
+    }
+}
+
+fn go_is_infinite(line: &str) -> bool {
+    line.split_whitespace().any(|tok| tok == "infinite")
+}
+
+fn format_bestmove(result: &SearchResult) -> String {
+    match result.best_move {
+        Some(mv) => format!("bestmove {mv}"),
+        None => "bestmove 0000".to_string(),
     }
 }
 
@@ -477,6 +508,99 @@ mod tests {
             out.iter()
                 .any(|l| l.starts_with("info ") && l.contains("score mate 1")),
             "expected score mate 1, got {out:?}"
+        );
+    }
+
+    #[test]
+    fn go_infinite_emits_info_but_not_bestmove_until_stop() {
+        let mut session = UciSession::new();
+        let _ = replies(&mut session, "position startpos");
+        let go_out = replies(&mut session, "go infinite");
+        assert!(
+            go_out.iter().any(|l| l.starts_with("info ")),
+            "expected info during infinite search, got {go_out:?}"
+        );
+        assert!(
+            go_out.iter().all(|l| !l.starts_with("bestmove ")),
+            "go infinite must not emit bestmove until stop, got {go_out:?}"
+        );
+
+        let stop_out = replies(&mut session, "stop");
+        let best = stop_out
+            .iter()
+            .find(|l| l.starts_with("bestmove "))
+            .expect("stop should emit bestmove");
+        let mv = best.strip_prefix("bestmove ").unwrap();
+        let legal: Vec<String> = generate_legal(&parse_fen(START_FEN).unwrap())
+            .iter()
+            .map(|m| m.to_string())
+            .collect();
+        assert!(legal.contains(&mv.to_string()), "got {mv}, legal={legal:?}");
+    }
+
+    #[test]
+    fn stop_without_infinite_search_is_silent() {
+        let mut session = UciSession::new();
+        let out = replies(&mut session, "stop");
+        assert!(out.is_empty(), "expected no reply, got {out:?}");
+    }
+
+    #[test]
+    fn go_nodes_still_returns_bestmove() {
+        let mut session = UciSession::new();
+        let _ = replies(&mut session, "position startpos");
+        let out = replies(&mut session, "go nodes 10000000");
+        assert!(
+            out.iter().any(|l| l.starts_with("bestmove ")),
+            "finite go (nodes) must still emit bestmove, got {out:?}"
+        );
+    }
+
+    #[test]
+    fn nibbler_style_analysis_then_play_sequence() {
+        // Analysis: go infinite … stop → bestmove
+        let mut session = UciSession::new();
+        let _ = replies(&mut session, "uci");
+        let _ = replies(&mut session, "isready");
+        let _ = replies(&mut session, "setoption name MultiPV value 3");
+        let _ = replies(&mut session, "ucinewgame");
+        let _ = replies(&mut session, "position startpos");
+        let infinite = replies(&mut session, "go infinite");
+        assert!(infinite.iter().any(|l| l.starts_with("info ")));
+        assert!(infinite.iter().all(|l| !l.starts_with("bestmove ")));
+        let stopped = replies(&mut session, "stop");
+        assert!(stopped.iter().any(|l| l.starts_with("bestmove ")));
+
+        // Play reply after a human move: go nodes N → bestmove immediately (TUI uses go depth).
+        let _ = replies(&mut session, "position startpos moves e2e4");
+        let play = replies(&mut session, "go nodes 10000000");
+        assert!(
+            play.iter().any(|l| l.starts_with("info ")),
+            "expected info, got {play:?}"
+        );
+        let best = play
+            .iter()
+            .find(|l| l.starts_with("bestmove "))
+            .expect("play go must emit bestmove");
+        let mv = best.strip_prefix("bestmove ").unwrap();
+        let mut after_e2e4 = parse_fen(START_FEN).unwrap();
+        let m1 = resolve_uci_move(&after_e2e4, "e2e4").unwrap();
+        make_move(&mut after_e2e4, m1);
+        let legal: Vec<String> = generate_legal(&after_e2e4)
+            .iter()
+            .map(|m| m.to_string())
+            .collect();
+        assert!(legal.contains(&mv.to_string()), "got {mv}, legal={legal:?}");
+    }
+
+    #[test]
+    fn tui_style_go_depth_returns_bestmove_immediately() {
+        let mut session = UciSession::new();
+        let _ = replies(&mut session, "position startpos moves e2e4");
+        let out = replies(&mut session, "go depth 4");
+        assert!(
+            out.iter().any(|l| l.starts_with("bestmove ")),
+            "TUI go depth must emit bestmove immediately, got {out:?}"
         );
     }
 }
