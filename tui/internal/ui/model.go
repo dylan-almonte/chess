@@ -34,41 +34,46 @@ type Config struct {
 
 // Model is the Bubble Tea app state.
 type Model struct {
-	cfg           Config
-	phase         phase
-	errMsg        string
-	client        *engine.Client
-	board         board.Board
-	moves         []string
-	logLines      []string
-	tele          info.Telemetry
-	input         textinput.Model
-	logView       viewport.Model
-	waiting       bool
-	width         int
-	height        int
-	ready         bool
-	inbox         chan tea.Msg
-	legalMoves    map[string]bool // current legal move set from engine
-	engineLegal   map[string]bool // legal set for the engine's side (fetched before go)
-	awaitingLegal bool            // waiting for legalmoves response
-	pendingGo     bool            // need to send go after receiving engine-side legalmoves
+	cfg            Config
+	phase          phase
+	errMsg         string
+	client         *engine.Client
+	board          board.Board
+	moves          []string
+	logLines       []string
+	tele           info.Telemetry
+	input          textinput.Model
+	logView        viewport.Model
+	waiting        bool
+	width          int
+	height         int
+	ready          bool
+	inbox          chan tea.Msg
+	legalMoves     map[string]bool // current legal move set from engine
+	engineLegal    map[string]bool // legal set for the engine's side (fetched before go)
+	awaitingLegal  bool            // waiting for legalmoves response
+	pendingGo      bool            // need to send go after receiving engine-side legalmoves
+	unicodePieces  bool
+	selectedSquare string
+	cursorSquare   string
 }
 
 func New(cfg Config) Model {
 	ti := textinput.New()
-	ti.Placeholder = "e2e4 / quit"
+	ti.Placeholder = "e2e4 / tab / arrows+space / quit"
 	ti.CharLimit = 16
 	ti.Width = 24
 	vp := viewport.New(60, 8)
 	vp.SetContent("")
 	return Model{
-		cfg:     cfg,
-		phase:   phaseBoot,
-		board:   board.StartPos(),
-		tele:    info.Idle(),
-		input:   ti,
-		logView: vp,
+		cfg:           cfg,
+		phase:         phaseBoot,
+		board:         board.StartPos(),
+		tele:          info.Idle(),
+		input:         ti,
+		logView:       vp,
+		unicodePieces: true,
+		cursorSquare:  "e2",
 	}
 }
 
@@ -171,9 +176,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Type == tea.KeyEnter {
 			return m.submitInput()
 		}
+		if msg.Type == tea.KeyTab {
+			m.unicodePieces = !m.unicodePieces
+			return m, nil
+		}
+		if msg.Type == tea.KeyUp || msg.Type == tea.KeyDown || msg.Type == tea.KeyLeft || msg.Type == tea.KeyRight {
+			m.moveCursor(msg.Type)
+			return m, nil
+		}
+		if msg.Type == tea.KeySpace || msg.String() == " " {
+			return m.handleSquare(m.cursorSquare)
+		}
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
 		return m, cmd
+
+	case tea.MouseMsg:
+		if m.phase != phasePlay {
+			return m, nil
+		}
+		return m.handleMouse(msg)
 
 	case quitDoneMsg:
 		m.phase = phaseDone
@@ -309,10 +331,24 @@ func (m Model) submitInput() (tea.Model, tea.Cmd) {
 	if raw == "quit" || raw == "q" {
 		return m.beginQuit()
 	}
+	return m.submitMove(raw)
+}
+
+func (m Model) resolveSquareMove(from, to string) string {
+	token := from + to
+	if m.legalMoves != nil && m.legalMoves[token] {
+		return token
+	}
+	if m.legalMoves != nil && m.legalMoves[token+"q"] {
+		return token + "q"
+	}
+	return token
+}
+
+func (m Model) submitMove(raw string) (tea.Model, tea.Cmd) {
 	if m.waiting || m.awaitingLegal || m.legalMoves == nil {
 		return m, nil
 	}
-	// Gate on legal move set
 	if m.legalMoves != nil && !m.legalMoves[raw] {
 		m.logLines = append(m.logLines, fmt.Sprintf("! illegal move: %s", raw))
 		m.refreshLogView()
@@ -326,10 +362,10 @@ func (m Model) submitInput() (tea.Model, tea.Cmd) {
 	}
 	m.board = candidate
 	m.moves = append(m.moves, raw)
-	m.legalMoves = nil // clear until refreshed
+	m.legalMoves = nil
+	m.selectedSquare = ""
 	pos := "position startpos moves " + strings.Join(m.moves, " ")
 	_ = m.send(pos)
-	// Request engine-side legal set before go
 	_ = m.send("legalmoves")
 	m.pendingGo = true
 	m.waiting = true
@@ -337,6 +373,69 @@ func (m Model) submitInput() (tea.Model, tea.Cmd) {
 		return m, waitInbox(m.inbox)
 	}
 	return m, nil
+}
+
+func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if msg.Action != tea.MouseActionPress || msg.Button != tea.MouseButtonLeft {
+		return m, nil
+	}
+	name, ok := SquareAtCell(msg.X, msg.Y)
+	if !ok {
+		return m, nil
+	}
+	return m.handleSquare(name)
+}
+
+func (m Model) handleSquare(name string) (tea.Model, tea.Cmd) {
+	if m.waiting || m.awaitingLegal || m.legalMoves == nil {
+		return m, nil
+	}
+	if m.selectedSquare == "" {
+		if m.board.PieceAtName(name) == board.Empty {
+			return m, nil
+		}
+		m.selectedSquare = name
+		return m, nil
+	}
+	if name == m.selectedSquare {
+		m.selectedSquare = ""
+		return m, nil
+	}
+	uci := m.resolveSquareMove(m.selectedSquare, name)
+	m.selectedSquare = ""
+	return m.submitMove(uci)
+}
+
+func (m *Model) moveCursor(key tea.KeyType) {
+	sq, err := board.ParseSquare(m.cursorSquare)
+	if err != nil {
+		m.cursorSquare = "e2"
+		sq, _ = board.ParseSquare(m.cursorSquare)
+	}
+	file, rank := sq%8, sq/8
+	switch key {
+	case tea.KeyLeft:
+		file--
+	case tea.KeyRight:
+		file++
+	case tea.KeyUp:
+		rank++
+	case tea.KeyDown:
+		rank--
+	}
+	if file < 0 {
+		file = 0
+	}
+	if file > 7 {
+		file = 7
+	}
+	if rank < 0 {
+		rank = 0
+	}
+	if rank > 7 {
+		rank = 7
+	}
+	m.cursorSquare = board.SquareName(rank*8 + file)
 }
 
 func (m Model) beginQuit() (tea.Model, tea.Cmd) {
@@ -352,6 +451,32 @@ func (m Model) beginQuit() (tea.Model, tea.Cmd) {
 	}
 }
 
+func (m Model) renderBoard() string {
+	cursorStyle := lipgloss.NewStyle().Background(lipgloss.Color("8"))
+	selectedStyle := lipgloss.NewStyle().Background(lipgloss.Color("12"))
+	var lines []string
+	for rank := 7; rank >= 0; rank-- {
+		var sb strings.Builder
+		sb.WriteByte(byte('1' + rank))
+		sb.WriteByte(' ')
+		for file := 0; file < 8; file++ {
+			name := board.SquareName(rank*8 + file)
+			cell := m.board.GlyphAt(name, m.unicodePieces) + " "
+			switch name {
+			case m.selectedSquare:
+				sb.WriteString(selectedStyle.Render(cell))
+			case m.cursorSquare:
+				sb.WriteString(cursorStyle.Render(cell))
+			default:
+				sb.WriteString(cell)
+			}
+		}
+		lines = append(lines, sb.String())
+	}
+	lines = append(lines, "  a b c d e f g h")
+	return strings.Join(lines, "\n")
+}
+
 func (m Model) View() string {
 	if m.phase == phaseError {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render(
@@ -362,7 +487,7 @@ func (m Model) View() string {
 		return "Connecting to engine…"
 	}
 
-	boardStr := m.board.Render()
+	boardStr := m.renderBoard()
 	movesStr := "Moves:\n"
 	if len(m.moves) == 0 {
 		movesStr += "(none)"
@@ -405,6 +530,8 @@ func (m Model) Moves() []string           { return append([]string(nil), m.moves
 func (m Model) Board() board.Board        { return m.board }
 func (m Model) Telemetry() info.Telemetry { return m.tele }
 func (m Model) IsPlayable() bool          { return m.phase == phasePlay }
+func (m Model) SelectedSquare() string    { return m.selectedSquare }
+func (m Model) CursorSquare() string      { return m.cursorSquare }
 
 func max(a, b int) int {
 	if a > b {

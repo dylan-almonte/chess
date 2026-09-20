@@ -1,10 +1,56 @@
 package board_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/dylanca/chess-tui/tui/internal/board"
 )
+
+func renderedGlyph(t *testing.T, rendered, name string) string {
+	t.Helper()
+	file := int(name[0] - 'a')
+	rank := int(name[1] - '1')
+	lines := strings.Split(rendered, "\n")
+	if len(lines) < 8 {
+		t.Fatalf("expected at least 8 rank lines, got %d in %q", len(lines), rendered)
+	}
+	line := []rune(lines[7-rank])
+	idx := 2 + file*2
+	if idx >= len(line) {
+		t.Fatalf("line too short for %s: %q", name, string(line))
+	}
+	return string(line[idx])
+}
+
+func TestStartposShowsUnicodeWhitePawn(t *testing.T) {
+	rendered := board.StartPos().Render()
+	if got := renderedGlyph(t, rendered, "e2"); got != "♙" {
+		t.Fatalf("e2 want ♙ got %q", got)
+	}
+	if got := renderedGlyph(t, rendered, "e7"); got != "♟" {
+		t.Fatalf("e7 want ♟ got %q", got)
+	}
+	got := renderedGlyph(t, rendered, "e4")
+	if got == "P" || got == "p" || got == "♙" || got == "♟" {
+		t.Fatalf("e4 should be an empty placeholder, got %q", got)
+	}
+}
+
+func TestUnicodeBoardUpdatesAfterAHumanMove(t *testing.T) {
+	b := board.StartPos()
+	if err := b.ApplyUCI("e2e4"); err != nil {
+		t.Fatal(err)
+	}
+	rendered := b.Render()
+	if got := renderedGlyph(t, rendered, "e4"); got != "♙" {
+		t.Fatalf("e4 want ♙ got %q", got)
+	}
+	got := renderedGlyph(t, rendered, "e2")
+	if got == "P" || got == "p" || got == "♙" || got == "♟" {
+		t.Fatalf("e2 should be empty after e2e4, got %q", got)
+	}
+}
 
 func TestStartPosAndE2E4(t *testing.T) {
 	b := board.StartPos()

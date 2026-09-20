@@ -41,6 +41,9 @@ Point Nibbler at the release binary. For the engine to move on the board, use Pl
 ## Controls
 
 - Type a UCI long-algebraic move (e.g. `e2e4`) and press Enter
+- Tab toggles Unicode piece glyphs and ASCII letters
+- Click a piece, then click a destination, to play through the same path as typed UCI
+- Arrow keys move a board cursor; Space selects / confirms a square the same way a click does
 - `quit` or `ctrl+c` / `q` exits; the TUI sends UCI `quit` and waits for the engine to exit
 
 ## Layout

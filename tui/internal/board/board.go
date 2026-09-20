@@ -146,27 +146,54 @@ func abs(x int) int {
 	return x
 }
 
-// Render returns an 8-line board string (rank 8 at top) with file labels.
+var unicodeGlyphs = map[Piece]string{
+	'K': "♔", 'Q': "♕", 'R': "♖", 'B': "♗", 'N': "♘", 'P': "♙",
+	'k': "♚", 'q': "♛", 'r': "♜", 'b': "♝", 'n': "♞", 'p': "♟",
+}
+
+// Render returns an 8-line Unicode board (rank 8 at top) with file labels.
 func (b Board) Render() string {
+	return b.RenderMode(true)
+}
+
+// RenderMode returns the board using Unicode glyphs when unicode is true,
+// otherwise ASCII letters. Each square occupies two columns (glyph + pad).
+func (b Board) RenderMode(unicode bool) string {
 	var sb strings.Builder
 	for rank := 7; rank >= 0; rank-- {
 		sb.WriteByte(byte('1' + rank))
 		sb.WriteByte(' ')
 		for file := 0; file < 8; file++ {
-			p := b.sq[rank*8+file]
-			if p == Empty {
-				if (rank+file)%2 == 0 {
-					sb.WriteByte('.')
-				} else {
-					sb.WriteByte(',')
-				}
-			} else {
-				sb.WriteByte(byte(p))
-			}
+			sb.WriteString(b.cellGlyph(rank, file, unicode))
 			sb.WriteByte(' ')
 		}
 		sb.WriteByte('\n')
 	}
 	sb.WriteString("  a b c d e f g h")
 	return sb.String()
+}
+
+// GlyphAt returns the display glyph for a named square.
+func (b Board) GlyphAt(name string, unicode bool) string {
+	sq, err := ParseSquare(name)
+	if err != nil {
+		return "?"
+	}
+	return b.cellGlyph(sq/8, sq%8, unicode)
+}
+
+func (b Board) cellGlyph(rank, file int, unicode bool) string {
+	p := b.sq[rank*8+file]
+	if p == Empty {
+		if (rank+file)%2 == 0 {
+			return "."
+		}
+		return ","
+	}
+	if unicode {
+		if g, ok := unicodeGlyphs[p]; ok {
+			return g
+		}
+	}
+	return string(p)
 }
