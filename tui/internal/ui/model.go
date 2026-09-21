@@ -56,6 +56,7 @@ type Model struct {
 	unicodePieces  bool
 	selectedSquare string
 	cursorSquare   string
+	metrics        BoardMetrics
 }
 
 func New(cfg Config) Model {
@@ -74,6 +75,7 @@ func New(cfg Config) Model {
 		logView:       vp,
 		unicodePieces: true,
 		cursorSquare:  "e2",
+		metrics:       DefaultBoardMetrics(),
 	}
 }
 
@@ -117,8 +119,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.metrics = ComputeBoardMetrics(msg.Width, msg.Height)
 		m.logView.Width = max(20, msg.Width-4)
-		m.logView.Height = max(4, msg.Height/4)
+		boardRows := 8*m.metrics.CellH + fileLabelRows + boardBorderRows
+		remain := msg.Height - boardRows - 6
+		if remain < 2 {
+			remain = 2
+		}
+		m.logView.Height = remain
 		return m, nil
 
 	case startResultMsg:
@@ -379,7 +387,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if msg.Action != tea.MouseActionPress || msg.Button != tea.MouseButtonLeft {
 		return m, nil
 	}
-	name, ok := SquareAtCell(msg.X, msg.Y)
+	name, ok := SquareAtCellWith(msg.X, msg.Y, m.metrics)
 	if !ok {
 		return m, nil
 	}
@@ -452,29 +460,73 @@ func (m Model) beginQuit() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) renderBoard() string {
+	met := m.metrics
+	if met.CellW == 0 {
+		met = DefaultBoardMetrics()
+	}
 	cursorStyle := lipgloss.NewStyle().Background(lipgloss.Color("8"))
 	selectedStyle := lipgloss.NewStyle().Background(lipgloss.Color("12"))
 	var lines []string
 	for rank := 7; rank >= 0; rank-- {
-		var sb strings.Builder
-		sb.WriteByte(byte('1' + rank))
-		sb.WriteByte(' ')
-		for file := 0; file < 8; file++ {
-			name := board.SquareName(rank*8 + file)
-			cell := m.board.GlyphAt(name, m.unicodePieces) + " "
-			switch name {
-			case m.selectedSquare:
-				sb.WriteString(selectedStyle.Render(cell))
-			case m.cursorSquare:
-				sb.WriteString(cursorStyle.Render(cell))
-			default:
-				sb.WriteString(cell)
+		rowCells := make([][]string, met.CellH)
+		for i := range rowCells {
+			rowCells[i] = make([]string, 0, 9)
+		}
+		label := string(byte('1' + rank))
+		for r := 0; r < met.CellH; r++ {
+			if r == met.CellH/2 {
+				rowCells[r] = append(rowCells[r], padCenter(label, met.LabelW))
+			} else {
+				rowCells[r] = append(rowCells[r], strings.Repeat(" ", met.LabelW))
 			}
 		}
-		lines = append(lines, sb.String())
+		for file := 0; file < 8; file++ {
+			name := board.SquareName(rank*8 + file)
+			glyph := m.board.GlyphAt(name, m.unicodePieces)
+			cellLines := padCell(glyph, met.CellW, met.CellH)
+			style := lipgloss.NewStyle()
+			switch name {
+			case m.selectedSquare:
+				style = selectedStyle
+			case m.cursorSquare:
+				style = cursorStyle
+			}
+			for r := 0; r < met.CellH; r++ {
+				rowCells[r] = append(rowCells[r], style.Render(cellLines[r]))
+			}
+		}
+		for r := 0; r < met.CellH; r++ {
+			lines = append(lines, strings.Join(rowCells[r], ""))
+		}
 	}
-	lines = append(lines, "  a b c d e f g h")
+	fileRow := strings.Repeat(" ", met.LabelW)
+	for file := 0; file < 8; file++ {
+		fileRow += padCenter(string(byte('a'+file)), met.CellW)
+	}
+	lines = append(lines, fileRow)
 	return strings.Join(lines, "\n")
+}
+
+func padCell(glyph string, w, h int) []string {
+	out := make([]string, h)
+	for r := 0; r < h; r++ {
+		if r == h/2 {
+			out[r] = padCenter(glyph, w)
+		} else {
+			out[r] = strings.Repeat(" ", w)
+		}
+	}
+	return out
+}
+
+func padCenter(s string, w int) string {
+	n := len([]rune(s))
+	if n >= w {
+		return s
+	}
+	left := (w - n) / 2
+	right := w - n - left
+	return strings.Repeat(" ", left) + s + strings.Repeat(" ", right)
 }
 
 func (m Model) View() string {
@@ -532,6 +584,18 @@ func (m Model) Telemetry() info.Telemetry { return m.tele }
 func (m Model) IsPlayable() bool          { return m.phase == phasePlay }
 func (m Model) SelectedSquare() string    { return m.selectedSquare }
 func (m Model) CursorSquare() string      { return m.cursorSquare }
+func (m Model) CellWidth() int {
+	if m.metrics.CellW == 0 {
+		return 2
+	}
+	return m.metrics.CellW
+}
+func (m Model) CellHeight() int {
+	if m.metrics.CellH == 0 {
+		return 1
+	}
+	return m.metrics.CellH
+}
 
 func max(a, b int) int {
 	if a > b {

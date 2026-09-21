@@ -1,6 +1,7 @@
 package ui_test
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -261,6 +262,39 @@ func TestArrowSelectionPlaysE2E4(t *testing.T) {
 	}
 	if !strings.Contains(log, "> go") {
 		t.Fatalf("expected outbound go, log:\n%s", log)
+	}
+}
+
+func resize(m ui.Model, w, h int) ui.Model {
+	model, _ := m.Update(tea.WindowSizeMsg{Width: w, Height: h})
+	return model.(ui.Model)
+}
+
+func TestLargeWindowUsesBiggerSquares(t *testing.T) {
+	m := resize(connectFake(t, engine.StubHandler), 80, 28)
+	if m.CellWidth() < 3 || m.CellHeight() < 2 {
+		t.Fatalf("expected cell at least 3x2 at 80x28, got %dx%d", m.CellWidth(), m.CellHeight())
+	}
+	if !viewHasGlyph(m.View(), "♙") && !viewHasGlyph(m.View(), "P") {
+		t.Fatalf("e2 pawn missing in large view:\n%s", m.View())
+	}
+}
+
+func TestNarrowWindowKeepsAReadable8x8Grid(t *testing.T) {
+	m := resize(connectFake(t, engine.StubHandler), 60, 20)
+	view := m.View()
+	for rank := 1; rank <= 8; rank++ {
+		if !strings.Contains(view, fmt.Sprintf("%d", rank)) {
+			t.Fatalf("missing rank %d in narrow view:\n%s", rank, view)
+		}
+	}
+	for _, file := range []string{"a", "b", "c", "d", "e", "f", "g", "h"} {
+		if !strings.Contains(view, file) {
+			t.Fatalf("missing file %s in narrow view:\n%s", file, view)
+		}
+	}
+	if !viewHasGlyph(view, "♙") && !viewHasGlyph(view, "P") {
+		t.Fatalf("e2 pawn missing in narrow view:\n%s", view)
 	}
 }
 

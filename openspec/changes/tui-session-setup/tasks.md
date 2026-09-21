@@ -1,12 +1,12 @@
 ## 1. Scaled board (red)
 
-- [ ] 1.1 Add tests `large_window_uses_bigger_squares` (80×28 → cell at least 3×2, `e2` still a pawn) and `narrow_window_keeps_a_readable_8x8_grid` (60×20 → eight ranks/files, `e2` still a pawn); verify they fail on the current 2×1 render
-- [ ] 1.2 Add a hit-test test that maps `e2`/`e4` at 3×2 metrics and still maps them at 2×1; verify it fails because `SquareAtCell` is fixed to 2×1
+- [x] 1.1 Add tests `large_window_uses_bigger_squares` (80×28 → cell at least 3×2, `e2` still a pawn) and `narrow_window_keeps_a_readable_8x8_grid` (60×20 → eight ranks/files, `e2` still a pawn); verify they fail on the current 2×1 render
+- [x] 1.2 Add a hit-test test that maps `e2`/`e4` at 3×2 metrics and still maps them at 2×1; verify it fails because `SquareAtCell` is fixed to 2×1
 
 ## 2. Scaled board (green)
 
-- [ ] 2.1 Compute `cellW`/`cellH` from window size (clamp 2×1 … 5×3, shrink log first) and render centered glyphs; verify the two window-size scenarios pass
-- [ ] 2.2 Drive `SquareAtCell` from the same metrics as `View`; verify the scaled hit-test and existing click `e2e4` tests pass, then commit the scale work
+- [x] 2.1 Compute `cellW`/`cellH` from window size (clamp 2×1 … 5×3, shrink log first) and render centered glyphs; verify the two window-size scenarios pass
+- [x] 2.2 Drive `SquareAtCell` from the same metrics as `View`; verify the scaled hit-test and existing click `e2e4` tests pass, then commit the scale work
 
 ## 3. Setup mode (red)
 
