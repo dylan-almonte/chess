@@ -10,13 +10,13 @@
 
 ## 3. Setup mode (red)
 
-- [ ] 3.1 Add fake-engine tests `place_a_queen_on_d5` and `remove_a_piece_from_e2`; verify they fail because `setup` is not a command
-- [ ] 3.2 Add tests `play_a_kings_and_queen_setup` (`position fen 4k3/8/8/8/8/8/8/3QK3 w - - 0 1` + `legalmoves`) and `setup_without_both_kings_is_rejected`; verify they fail
+- [x] 3.1 Add fake-engine tests `place_a_queen_on_d5` and `remove_a_piece_from_e2`; verify they fail because `setup` is not a command
+- [x] 3.2 Add tests `play_a_kings_and_queen_setup` (`position fen 4k3/8/8/8/8/8/8/3QK3 w - - 0 1` + `legalmoves`) and `setup_without_both_kings_is_rejected`; verify they fail
 
 ## 4. Setup mode (green)
 
-- [ ] 4.1 Implement `setup` / brush keys / place-or-erase on click or Space, with `side`, `clear`, and `startpos`; verify the two edit tests pass and no `go` is sent
-- [ ] 4.2 Build a six-field FEN (inferred castling, ep `-`, clocks `0 1`), reject `play` without both kings, and on success send `ucinewgame` + `position fen` + `legalmoves` and clear the move list; verify both start-play tests pass, then commit the setup work
+- [x] 4.1 Implement `setup` / brush keys / place-or-erase on click or Space, with `side`, `clear`, and `startpos`; verify the two edit tests pass and no `go` is sent
+- [x] 4.2 Build a six-field FEN (inferred castling, ep `-`, clocks `0 1`), reject `play` without both kings, and on success send `ucinewgame` + `position fen` + `legalmoves` and clear the move list; verify both start-play tests pass, then commit the setup work
 
 ## 5. Player slots (red)
 

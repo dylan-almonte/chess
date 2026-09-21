@@ -298,6 +298,87 @@ func TestNarrowWindowKeepsAReadable8x8Grid(t *testing.T) {
 	}
 }
 
+func typeCmd(m ui.Model, raw string) ui.Model {
+	m.SetInputValue(raw)
+	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	return model.(ui.Model)
+}
+
+func TestPlaceAQueenOnD5(t *testing.T) {
+	m := connectStateful(t, engine.NewStatefulHandler())
+	beforeGo := strings.Count(m.LogText(), "> go")
+	m = typeCmd(m, "setup")
+	m = typeCmd(m, "Q")
+	m, _ = clickSquare(m, "d5")
+	if m.Board().PieceAtName("d5") != 'Q' {
+		t.Fatalf("expected white queen on d5, got %c", m.Board().PieceAtName("d5"))
+	}
+	if len(m.Moves()) != 0 {
+		t.Fatalf("setup must not append moves, got %v", m.Moves())
+	}
+	if strings.Count(m.LogText(), "> go") != beforeGo {
+		t.Fatal("setup must not send go")
+	}
+}
+
+func TestRemoveAPieceFromE2(t *testing.T) {
+	m := connectStateful(t, engine.NewStatefulHandler())
+	m = typeCmd(m, "setup")
+	m = typeCmd(m, "x")
+	m, _ = clickSquare(m, "e2")
+	if m.Board().PieceAtName("e2") != 0 {
+		t.Fatalf("e2 should be empty, got %c", m.Board().PieceAtName("e2"))
+	}
+	if len(m.Moves()) != 0 {
+		t.Fatalf("setup must not append moves, got %v", m.Moves())
+	}
+}
+
+func TestPlayAKingsAndQueenSetup(t *testing.T) {
+	h := engine.NewStatefulHandler()
+	h.SetLegalMoves("", []string{"d1d8", "e1d2", "e1e2", "e1f2", "e1f1", "e1d1"})
+	m := connectStateful(t, h)
+	m = typeCmd(m, "setup")
+	m = typeCmd(m, "clear")
+	m = typeCmd(m, "K")
+	m, _ = clickSquare(m, "e1")
+	m = typeCmd(m, "Q")
+	m, _ = clickSquare(m, "d1")
+	m = typeCmd(m, "k")
+	m, _ = clickSquare(m, "e8")
+	m = typeCmd(m, "play")
+	log := m.LogText()
+	if !strings.Contains(log, "> position fen 4k3/8/8/8/8/8/8/3QK3 w - - 0 1") {
+		t.Fatalf("expected custom FEN position, log:\n%s", log)
+	}
+	if !strings.Contains(log, "> legalmoves") {
+		t.Fatalf("expected legalmoves after play, log:\n%s", log)
+	}
+	if m.Board().PieceAtName("e1") != 'K' || m.Board().PieceAtName("d1") != 'Q' || m.Board().PieceAtName("e8") != 'k' {
+		t.Fatal("board should keep the three setup pieces")
+	}
+}
+
+func TestSetupWithoutBothKingsIsRejected(t *testing.T) {
+	m := connectStateful(t, engine.NewStatefulHandler())
+	beforePos := strings.Count(m.LogText(), "> position")
+	beforeGo := strings.Count(m.LogText(), "> go")
+	m = typeCmd(m, "setup")
+	m = typeCmd(m, "clear")
+	m = typeCmd(m, "K")
+	m, _ = clickSquare(m, "e1")
+	m = typeCmd(m, "play")
+	if !strings.Contains(m.LogText(), "king") {
+		t.Fatalf("expected both-kings error, log:\n%s", m.LogText())
+	}
+	if strings.Count(m.LogText(), "> position") != beforePos {
+		t.Fatal("rejected play must not send position")
+	}
+	if strings.Count(m.LogText(), "> go") != beforeGo {
+		t.Fatal("rejected play must not send go")
+	}
+}
+
 func TestSuccessfulEngineConnect(t *testing.T) {
 	m := connectFake(t, engine.StubHandler)
 	log := m.LogText()

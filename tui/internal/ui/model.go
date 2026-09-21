@@ -57,12 +57,16 @@ type Model struct {
 	selectedSquare string
 	cursorSquare   string
 	metrics        BoardMetrics
+	setupMode      bool
+	brush          byte // 0 empty-place ignored; 'x' erase; otherwise piece letter
+	whiteToMove    bool
+	baseFEN        string
 }
 
 func New(cfg Config) Model {
 	ti := textinput.New()
 	ti.Placeholder = "e2e4 / tab / arrows+space / quit"
-	ti.CharLimit = 16
+	ti.CharLimit = 24
 	ti.Width = 24
 	vp := viewport.New(60, 8)
 	vp.SetContent("")
@@ -76,6 +80,8 @@ func New(cfg Config) Model {
 		unicodePieces: true,
 		cursorSquare:  "e2",
 		metrics:       DefaultBoardMetrics(),
+		whiteToMove:   true,
+		baseFEN:       board.StartFEN,
 	}
 }
 
@@ -284,8 +290,7 @@ func (m Model) handleLine(text string) (Model, tea.Cmd) {
 						m.board = candidate
 						m.moves = append(m.moves, mv)
 						// Synchronize full history
-						pos := "position startpos moves " + strings.Join(m.moves, " ")
-						_ = m.send(pos)
+						_ = m.send(m.positionCommand())
 						// Refresh legal moves for human side
 						_ = m.send("legalmoves")
 						m.awaitingLegal = true
@@ -339,7 +344,101 @@ func (m Model) submitInput() (tea.Model, tea.Cmd) {
 	if raw == "quit" || raw == "q" {
 		return m.beginQuit()
 	}
+	if cmd, ok := m.handleCommand(raw); ok {
+		return cmd()
+	}
+	if m.setupMode {
+		return m, nil
+	}
 	return m.submitMove(raw)
+}
+
+func (m Model) handleCommand(raw string) (func() (tea.Model, tea.Cmd), bool) {
+	switch raw {
+	case "setup":
+		return func() (tea.Model, tea.Cmd) {
+			m.setupMode = true
+			m.selectedSquare = ""
+			m.brush = 0
+			return m, nil
+		}, true
+	case "play":
+		return func() (tea.Model, tea.Cmd) { return m.startPlayFromSetup() }, true
+	case "side":
+		return func() (tea.Model, tea.Cmd) {
+			if m.setupMode {
+				m.whiteToMove = !m.whiteToMove
+			}
+			return m, nil
+		}, true
+	case "clear":
+		return func() (tea.Model, tea.Cmd) {
+			if m.setupMode {
+				m.board.Clear()
+			}
+			return m, nil
+		}, true
+	case "startpos":
+		return func() (tea.Model, tea.Cmd) {
+			if m.setupMode {
+				m.board = board.StartPos()
+				m.whiteToMove = true
+			}
+			return m, nil
+		}, true
+	}
+	if m.setupMode && isBrushToken(raw) {
+		return func() (tea.Model, tea.Cmd) {
+			if raw == "x" {
+				m.brush = 'x'
+			} else {
+				m.brush = raw[0]
+			}
+			return m, nil
+		}, true
+	}
+	return nil, false
+}
+
+func isBrushToken(raw string) bool {
+	if raw == "x" {
+		return true
+	}
+	if len(raw) != 1 {
+		return false
+	}
+	switch raw[0] {
+	case 'K', 'Q', 'R', 'B', 'N', 'P', 'k', 'q', 'r', 'b', 'n', 'p':
+		return true
+	}
+	return false
+}
+
+func (m Model) startPlayFromSetup() (tea.Model, tea.Cmd) {
+	if !m.setupMode {
+		return m, nil
+	}
+	w, b := m.board.CountKings()
+	if w != 1 || b != 1 {
+		m.logLines = append(m.logLines, "! both kings are required")
+		m.refreshLogView()
+		return m, nil
+	}
+	fen := m.board.FEN(m.whiteToMove)
+	m.baseFEN = fen
+	m.moves = nil
+	m.legalMoves = nil
+	m.selectedSquare = ""
+	m.setupMode = false
+	m.brush = 0
+	_ = m.send("ucinewgame")
+	_ = m.send("position fen " + fen)
+	_ = m.send("legalmoves")
+	m.awaitingLegal = true
+	if m.inbox != nil {
+		return m, waitInbox(m.inbox)
+	}
+	return m, nil
 }
 
 func (m Model) resolveSquareMove(from, to string) string {
@@ -372,8 +471,7 @@ func (m Model) submitMove(raw string) (tea.Model, tea.Cmd) {
 	m.moves = append(m.moves, raw)
 	m.legalMoves = nil
 	m.selectedSquare = ""
-	pos := "position startpos moves " + strings.Join(m.moves, " ")
-	_ = m.send(pos)
+	_ = m.send(m.positionCommand())
 	_ = m.send("legalmoves")
 	m.pendingGo = true
 	m.waiting = true
@@ -394,7 +492,32 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	return m.handleSquare(name)
 }
 
+func (m Model) positionCommand() string {
+	if len(m.moves) == 0 {
+		if m.baseFEN == "" || m.baseFEN == board.StartFEN {
+			return "position startpos"
+		}
+		return "position fen " + m.baseFEN
+	}
+	joined := strings.Join(m.moves, " ")
+	if m.baseFEN == "" || m.baseFEN == board.StartFEN {
+		return "position startpos moves " + joined
+	}
+	return "position fen " + m.baseFEN + " moves " + joined
+}
+
 func (m Model) handleSquare(name string) (tea.Model, tea.Cmd) {
+	if m.setupMode {
+		if m.brush == 0 {
+			return m, nil
+		}
+		if m.brush == 'x' {
+			m.board.ClearSquare(name)
+		} else {
+			m.board.SetSquare(name, m.brush)
+		}
+		return m, nil
+	}
 	if m.waiting || m.awaitingLegal || m.legalMoves == nil {
 		return m, nil
 	}
