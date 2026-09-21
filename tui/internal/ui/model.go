@@ -87,7 +87,7 @@ func New(cfg Config) Model {
 		input:         ti,
 		logView:       vp,
 		unicodePieces: true,
-		cursorSquare:  "e2",
+		cursorSquare:  "",
 		metrics:       DefaultBoardMetrics(),
 		whiteToMove:   true,
 		baseFEN:       board.StartFEN,
@@ -210,7 +210,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if msg.Type == tea.KeySpace || msg.String() == " " {
-			return m.handleSquare(m.cursorSquare)
+			if m.cursorSquare != "" {
+				return m.handleSquare(m.cursorSquare)
+			}
+			return m, nil
 		}
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
@@ -613,7 +616,7 @@ func (m *Model) moveCursor(key tea.KeyType) {
 	sq, err := board.ParseSquare(m.cursorSquare)
 	if err != nil {
 		m.cursorSquare = "e2"
-		sq, _ = board.ParseSquare(m.cursorSquare)
+		return
 	}
 	file, rank := sq%8, sq/8
 	switch key {
@@ -679,8 +682,8 @@ func (m Model) renderBoard() string {
 		}
 		for file := 0; file < 8; file++ {
 			name := board.SquareName(rank*8 + file)
-			piece := m.board.PieceAtName(name)
-			cellLines := board.PieceArt(piece, met.CellW, met.CellH, m.unicodePieces)
+			glyph := m.board.GlyphAt(name, m.unicodePieces)
+			cellLines := padCell(glyph, met.CellW, met.CellH)
 			isLight := (rank+file)%2 == 1
 			style := darkSquare
 			if isLight {

@@ -240,7 +240,9 @@ func TestArrowSelectionPlaysE2E4(t *testing.T) {
 	h := engine.NewStatefulHandler()
 	h.SetLegalMoves("e2e4", blackAfterE4())
 	m := connectStateful(t, h)
-	// Default cursor is e2; confirm, move up to e3 then e4, confirm.
+	// First arrow press initialises cursor to e2; Space selects, Up×2 to e4, Space confirms.
+	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = model.(ui.Model)
 	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeySpace})
 	m = model.(ui.Model)
 	model, cmd2 := m.Update(tea.KeyMsg{Type: tea.KeyUp})
