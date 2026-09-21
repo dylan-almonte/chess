@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/blacktop/go-termimg"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -14,7 +13,6 @@ import (
 	"github.com/dylanca/chess-tui/tui/internal/engine"
 	"github.com/dylanca/chess-tui/tui/internal/info"
 	"github.com/dylanca/chess-tui/tui/internal/path"
-	"github.com/dylanca/chess-tui/tui/internal/render"
 )
 
 type phase int
@@ -62,8 +60,6 @@ type Model struct {
 	setupMode      bool
 	brush          byte // 0 empty-place ignored; 'x' erase; otherwise piece letter
 	whiteToMove    bool
-	imageMode      bool
-	imgProtocol    termimg.Protocol
 	baseFEN        string
 	whiteSlot      playerSlot
 	blackSlot      playerSlot
@@ -83,8 +79,6 @@ func New(cfg Config) Model {
 	ti.Width = 24
 	vp := viewport.New(60, 8)
 	vp.SetContent("")
-	proto := termimg.DetectProtocol()
-	hasImage := proto != termimg.Halfblocks && proto != termimg.Protocol(0)
 	return Model{
 		cfg:           cfg,
 		phase:         phaseBoot,
@@ -99,8 +93,6 @@ func New(cfg Config) Model {
 		baseFEN:       board.StartFEN,
 		whiteSlot:     slotHuman,
 		blackSlot:     slotEngine,
-		imageMode:     hasImage,
-		imgProtocol:   proto,
 	}
 }
 
@@ -670,29 +662,6 @@ func (m Model) renderBoard() string {
 	if met.CellW == 0 {
 		met = DefaultBoardMetrics()
 	}
-
-	if m.imageMode {
-		tileSize := 60
-		if met.CellW > 3 {
-			tileSize = met.CellW * 15
-		}
-		img := render.BoardImage(render.Options{
-			Board:          m.board,
-			SelectedSquare: m.selectedSquare,
-			CursorSquare:   m.cursorSquare,
-			TileSize:       tileSize,
-		})
-		cols := 8 * met.CellW
-		rows := 8 * met.CellH
-		w := termimg.NewImageWidgetFromImage(img)
-		w.SetSize(cols, rows)
-		w.SetProtocol(m.imgProtocol)
-		rendered, err := w.Render()
-		if err == nil && rendered != "" {
-			return rendered
-		}
-	}
-
 	lightSquare := lipgloss.NewStyle().Background(lipgloss.Color("#b58863")).Foreground(lipgloss.Color("#000000"))
 	darkSquare := lipgloss.NewStyle().Background(lipgloss.Color("#f0d9b5")).Foreground(lipgloss.Color("#000000"))
 	cursorStyle := lipgloss.NewStyle().Background(lipgloss.Color("#7fc97f")).Foreground(lipgloss.Color("#000000"))
