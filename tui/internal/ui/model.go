@@ -679,8 +679,8 @@ func (m Model) renderBoard() string {
 		}
 		for file := 0; file < 8; file++ {
 			name := board.SquareName(rank*8 + file)
-			glyph := m.board.GlyphAt(name, m.unicodePieces)
-			cellLines := padCell(glyph, met.CellW, met.CellH)
+			piece := m.board.PieceAtName(name)
+			cellLines := board.PieceArt(piece, met.CellW, met.CellH, m.unicodePieces)
 			isLight := (rank+file)%2 == 1
 			style := darkSquare
 			if isLight {
