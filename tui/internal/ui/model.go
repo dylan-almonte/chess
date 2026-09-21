@@ -139,7 +139,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.metrics = ComputeBoardMetrics(msg.Width, msg.Height)
 		m.logView.Width = max(20, msg.Width-4)
 		boardRows := 8*m.metrics.CellH + fileLabelRows + boardBorderRows
-		remain := msg.Height - boardRows - 6
+		remain := msg.Height - boardRows - 9
 		if remain < 2 {
 			remain = 2
 		}
@@ -659,8 +659,10 @@ func (m Model) renderBoard() string {
 	if met.CellW == 0 {
 		met = DefaultBoardMetrics()
 	}
-	cursorStyle := lipgloss.NewStyle().Background(lipgloss.Color("8"))
-	selectedStyle := lipgloss.NewStyle().Background(lipgloss.Color("12"))
+	lightSquare := lipgloss.NewStyle().Background(lipgloss.Color("#b58863")).Foreground(lipgloss.Color("#000000"))
+	darkSquare := lipgloss.NewStyle().Background(lipgloss.Color("#f0d9b5")).Foreground(lipgloss.Color("#000000"))
+	cursorStyle := lipgloss.NewStyle().Background(lipgloss.Color("#7fc97f")).Foreground(lipgloss.Color("#000000"))
+	selectedStyle := lipgloss.NewStyle().Background(lipgloss.Color("#ffff66")).Foreground(lipgloss.Color("#000000"))
 	var lines []string
 	for rank := 7; rank >= 0; rank-- {
 		rowCells := make([][]string, met.CellH)
@@ -679,7 +681,11 @@ func (m Model) renderBoard() string {
 			name := board.SquareName(rank*8 + file)
 			glyph := m.board.GlyphAt(name, m.unicodePieces)
 			cellLines := padCell(glyph, met.CellW, met.CellH)
-			style := lipgloss.NewStyle()
+			isLight := (rank+file)%2 == 1
+			style := darkSquare
+			if isLight {
+				style = lightSquare
+			}
 			switch name {
 			case m.selectedSquare:
 				style = selectedStyle

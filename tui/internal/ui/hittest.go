@@ -71,10 +71,10 @@ const (
 	minChromeRows   = 8
 	fileLabelRows   = 1
 	boardBorderRows = 2
-	minCellW        = 2
-	minCellH        = 1
-	maxCellW        = 5
-	maxCellH        = 3
+	minCellW        = 3
+	minCellH        = 2
+	maxCellW        = 7
+	maxCellH        = 5
 )
 
 // ComputeBoardMetrics sizes squares from leftover viewport. Log/chrome is
