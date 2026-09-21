@@ -61,11 +61,20 @@ type Model struct {
 	brush          byte // 0 empty-place ignored; 'x' erase; otherwise piece letter
 	whiteToMove    bool
 	baseFEN        string
+	whiteSlot      playerSlot
+	blackSlot      playerSlot
 }
+
+type playerSlot int
+
+const (
+	slotHuman playerSlot = iota
+	slotEngine
+)
 
 func New(cfg Config) Model {
 	ti := textinput.New()
-	ti.Placeholder = "e2e4 / tab / arrows+space / quit"
+	ti.Placeholder = "e2e4 / setup / white engine / quit"
 	ti.CharLimit = 24
 	ti.Width = 24
 	vp := viewport.New(60, 8)
@@ -82,6 +91,8 @@ func New(cfg Config) Model {
 		metrics:       DefaultBoardMetrics(),
 		whiteToMove:   true,
 		baseFEN:       board.StartFEN,
+		whiteSlot:     slotHuman,
+		blackSlot:     slotEngine,
 	}
 }
 
@@ -263,6 +274,8 @@ func (m Model) handleLine(text string) (Model, tea.Cmd) {
 				// This is the human-side legal set
 				m.legalMoves = set
 				m.awaitingLegal = false
+				nm, cmd := m.requestEngineIfNeeded()
+				return nm.(Model), cmd
 			}
 		}
 		if strings.HasPrefix(text, "bestmove") {
@@ -289,12 +302,16 @@ func (m Model) handleLine(text string) (Model, tea.Cmd) {
 					} else {
 						m.board = candidate
 						m.moves = append(m.moves, mv)
-						// Synchronize full history
+						m.whiteToMove = !m.whiteToMove
 						_ = m.send(m.positionCommand())
-						// Refresh legal moves for human side
 						_ = m.send("legalmoves")
-						m.awaitingLegal = true
 						m.legalMoves = nil
+						if m.mover() == slotEngine {
+							m.pendingGo = true
+							m.waiting = true
+						} else {
+							m.awaitingLegal = true
+						}
 					}
 				}
 			}
@@ -387,6 +404,16 @@ func (m Model) handleCommand(raw string) (func() (tea.Model, tea.Cmd), bool) {
 			return m, nil
 		}, true
 	}
+	if slot, kind, ok := parseSlotCommand(raw); ok {
+		return func() (tea.Model, tea.Cmd) {
+			if slot == "white" {
+				m.whiteSlot = kind
+			} else {
+				m.blackSlot = kind
+			}
+			return m.requestEngineIfNeeded()
+		}, true
+	}
 	if m.setupMode && isBrushToken(raw) {
 		return func() (tea.Model, tea.Cmd) {
 			if raw == "x" {
@@ -398,6 +425,46 @@ func (m Model) handleCommand(raw string) (func() (tea.Model, tea.Cmd), bool) {
 		}, true
 	}
 	return nil, false
+}
+
+func parseSlotCommand(raw string) (string, playerSlot, bool) {
+	fields := strings.Fields(raw)
+	if len(fields) != 2 {
+		return "", 0, false
+	}
+	if fields[0] != "white" && fields[0] != "black" {
+		return "", 0, false
+	}
+	switch fields[1] {
+	case "human":
+		return fields[0], slotHuman, true
+	case "engine":
+		return fields[0], slotEngine, true
+	}
+	return "", 0, false
+}
+
+func (m Model) mover() playerSlot {
+	if m.whiteToMove {
+		return m.whiteSlot
+	}
+	return m.blackSlot
+}
+
+func (m Model) requestEngineIfNeeded() (tea.Model, tea.Cmd) {
+	if m.setupMode || m.waiting || m.awaitingLegal || m.legalMoves == nil {
+		return m, nil
+	}
+	if m.mover() != slotEngine {
+		return m, nil
+	}
+	_ = m.send("legalmoves")
+	m.pendingGo = true
+	m.waiting = true
+	if m.inbox != nil {
+		return m, waitInbox(m.inbox)
+	}
+	return m, nil
 }
 
 func isBrushToken(raw string) bool {
@@ -471,10 +538,15 @@ func (m Model) submitMove(raw string) (tea.Model, tea.Cmd) {
 	m.moves = append(m.moves, raw)
 	m.legalMoves = nil
 	m.selectedSquare = ""
+	m.whiteToMove = !m.whiteToMove
 	_ = m.send(m.positionCommand())
 	_ = m.send("legalmoves")
-	m.pendingGo = true
-	m.waiting = true
+	if m.mover() == slotEngine {
+		m.pendingGo = true
+		m.waiting = true
+	} else {
+		m.awaitingLegal = true
+	}
 	if m.inbox != nil {
 		return m, waitInbox(m.inbox)
 	}
@@ -679,8 +751,29 @@ func (m Model) View() string {
 	teleBlock := lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1).Render(
 		"Telemetry\n" + m.tele.Render(),
 	)
-	inputLine := "input: " + m.input.View()
+	status := fmt.Sprintf("White: %s  Black: %s", slotName(m.whiteSlot), slotName(m.blackSlot))
+	if m.setupMode {
+		brush := "none"
+		if m.brush == 'x' {
+			brush = "erase"
+		} else if m.brush != 0 {
+			brush = string(m.brush)
+		}
+		side := "b"
+		if m.whiteToMove {
+			side = "w"
+		}
+		status += fmt.Sprintf("  setup %s  side: %s", brush, side)
+	}
+	inputLine := status + "\ninput: " + m.input.View()
 	return lipgloss.JoinVertical(lipgloss.Left, top, logBlock, teleBlock, inputLine)
+}
+
+func slotName(s playerSlot) string {
+	if s == slotEngine {
+		return "Engine"
+	}
+	return "Human"
 }
 
 // Test inspectors / helpers

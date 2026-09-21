@@ -20,14 +20,14 @@
 
 ## 5. Player slots (red)
 
-- [ ] 5.1 Add fake-engine tests `human_plays_black_from_startpos` and `engine_versus_engine_plays_without_typed_moves`; verify they fail because White is always human and every human ply sends `go`
+- [x] 5.1 Add fake-engine tests `human_plays_black_from_startpos` and `engine_versus_engine_plays_without_typed_moves`; verify they fail because White is always human and every human ply sends `go`
 
 ## 6. Player slots (green)
 
-- [ ] 6.1 Add `white human|engine` and `black human|engine` (default Human / Engine) and send `go` only when the side to move is Engine; verify both slot scenarios pass and existing Human-White tests still pass
-- [ ] 6.2 Show slot and setup status on the input line and document `setup` / `play` / slot commands in `tui/README.md`; verify `go test ./...` under `tui/` passes, then commit the slot work
+- [x] 6.1 Add `white human|engine` and `black human|engine` (default Human / Engine) and send `go` only when the side to move is Engine; verify both slot scenarios pass and existing Human-White tests still pass
+- [x] 6.2 Show slot and setup status on the input line and document `setup` / `play` / slot commands in `tui/README.md`; verify `go test ./...` under `tui/` passes, then commit the slot work
 
 ## 7. Gate
 
-- [ ] 7.1 Ensure every new delta-spec scenario has an automated Go test and run `gofmt` plus `go test ./...` under `tui/`
-- [ ] 7.2 Run `openspec validate tui-session-setup --strict` and fix any issues
+- [x] 7.1 Ensure every new delta-spec scenario has an automated Go test and run `gofmt` plus `go test ./...` under `tui/`
+- [x] 7.2 Run `openspec validate tui-session-setup --strict` and fix any issues

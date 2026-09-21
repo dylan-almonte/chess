@@ -379,6 +379,44 @@ func TestSetupWithoutBothKingsIsRejected(t *testing.T) {
 	}
 }
 
+func TestHumanPlaysBlackFromStartpos(t *testing.T) {
+	h := engine.NewStatefulHandler()
+	h.SetLegalMoves("e2e4", blackAfterE4())
+	h.SetBestmove("e2e4")
+	m := connectStateful(t, h)
+	m = typeCmd(m, "black human")
+	m.SetInputValue("white engine")
+	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = pump(t, model, cmd, func(u ui.Model) bool {
+		return u.Board().PieceAtName("e4") == 'P' && strings.Contains(u.LogText(), "< bestmove e2e4")
+	}, 80)
+	if !strings.Contains(m.LogText(), "> go") {
+		t.Fatalf("expected go before a human move, log:\n%s", m.LogText())
+	}
+	if strings.Count(m.LogText(), "> go") != 1 {
+		t.Fatalf("should wait for human Black, extra go in:\n%s", m.LogText())
+	}
+}
+
+func TestEngineVersusEnginePlaysWithoutTypedMoves(t *testing.T) {
+	h := engine.NewStatefulHandler()
+	h.SetLegalMoves("e2e4", blackAfterE4())
+	h.SetBestmove("e2e4")
+	m := connectStateful(t, h)
+	m = typeCmd(m, "black engine")
+	m.SetInputValue("white engine")
+	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = pump(t, model, cmd, func(u ui.Model) bool {
+		return len(u.Moves()) >= 2
+	}, 100)
+	if m.Moves()[0] != "e2e4" || m.Moves()[1] != "e7e5" {
+		t.Fatalf("expected e2e4 e7e5, got %v", m.Moves())
+	}
+	if strings.Count(m.LogText(), "> go") < 2 {
+		t.Fatalf("expected two go commands, log:\n%s", m.LogText())
+	}
+}
+
 func TestSuccessfulEngineConnect(t *testing.T) {
 	m := connectFake(t, engine.StubHandler)
 	log := m.LogText()
