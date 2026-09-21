@@ -67,14 +67,14 @@ func SquareAtCellWith(x, y int, m BoardMetrics) (string, bool) {
 }
 
 const (
-	moveListCols     = 32
-	minChromeRows    = 8
-	fileLabelRows    = 1
-	boardBorderRows  = 2
-	minCellW         = 2
-	minCellH         = 1
-	maxCellW         = 5
-	maxCellH         = 3
+	moveListCols    = 32
+	minChromeRows   = 8
+	fileLabelRows   = 1
+	boardBorderRows = 2
+	minCellW        = 2
+	minCellH        = 1
+	maxCellW        = 5
+	maxCellH        = 3
 )
 
 // ComputeBoardMetrics sizes squares from leftover viewport. Log/chrome is
