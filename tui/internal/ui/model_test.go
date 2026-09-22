@@ -1,6 +1,7 @@
 package ui_test
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -63,6 +64,359 @@ func connectFake(t *testing.T, handler func(string) []string) ui.Model {
 	m := ui.New(ui.Config{FakeHandler: handler})
 	cmd := m.Init()
 	return pump(t, m, cmd, func(u ui.Model) bool { return u.LegalReady() }, 60)
+}
+
+func viewHasGlyph(view, glyph string) bool {
+	return strings.Contains(view, glyph)
+}
+
+func TestToggleShowsASCIILettersWithoutMovingPieces(t *testing.T) {
+	m := connectFake(t, engine.StubHandler)
+	if !viewHasGlyph(m.View(), "♙") || !viewHasGlyph(m.View(), "♟") {
+		t.Fatalf("expected Unicode pieces before toggle, view:\n%s", m.View())
+	}
+	movesBefore := append([]string(nil), m.Moves()...)
+	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = model.(ui.Model)
+	if viewHasGlyph(m.View(), "♙") || viewHasGlyph(m.View(), "♟") {
+		t.Fatalf("expected ASCII letters after toggle, view:\n%s", m.View())
+	}
+	if !viewHasGlyph(m.View(), "P") || !viewHasGlyph(m.View(), "p") {
+		t.Fatalf("expected ASCII P/p after toggle, view:\n%s", m.View())
+	}
+	if got := m.Moves(); len(got) != len(movesBefore) {
+		t.Fatalf("toggle must not change move list, before %v after %v", movesBefore, got)
+	}
+}
+
+func TestToggleBackRestoresUnicode(t *testing.T) {
+	m := connectFake(t, engine.StubHandler)
+	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = model.(ui.Model)
+	if viewHasGlyph(m.View(), "♙") {
+		t.Fatal("expected ASCII after first Tab")
+	}
+	model, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = model.(ui.Model)
+	if !viewHasGlyph(m.View(), "♙") || !viewHasGlyph(m.View(), "♟") {
+		t.Fatalf("expected Unicode after second Tab, view:\n%s", m.View())
+	}
+}
+
+func TestChosenModeSurvivesAMove(t *testing.T) {
+	h := engine.NewStatefulHandler()
+	h.SetLegalMoves("e2e4", blackAfterE4())
+	m := connectStateful(t, h)
+	if !viewHasGlyph(m.View(), "♙") {
+		t.Fatalf("expected Unicode default before toggle, view:\n%s", m.View())
+	}
+	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = model.(ui.Model)
+	m.SetInputValue("e2e4")
+	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = pump(t, model, cmd, func(u ui.Model) bool {
+		return len(u.Moves()) >= 1 && u.Moves()[0] == "e2e4"
+	}, 60)
+	view := m.View()
+	if viewHasGlyph(view, "♙") || viewHasGlyph(view, "♟") {
+		t.Fatalf("ASCII mode should survive e2e4, view:\n%s", view)
+	}
+	if !viewHasGlyph(view, "P") {
+		t.Fatalf("expected ASCII P after e2e4, view:\n%s", view)
+	}
+}
+
+func clickSquare(m ui.Model, name string) (ui.Model, tea.Cmd) {
+	x, y := cellFor(name)
+	model, cmd := m.Update(tea.MouseMsg{
+		X:      x,
+		Y:      y,
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+		Type:   tea.MouseLeft,
+	})
+	return model.(ui.Model), cmd
+}
+
+func outboundCount(m ui.Model) int {
+	n := 0
+	for _, e := range m.ClientLog() {
+		if e.Dir == engine.Outbound {
+			n++
+		}
+	}
+	return n
+}
+
+func TestClickE2ThenE4PlaysThroughTheTypedPath(t *testing.T) {
+	h := engine.NewStatefulHandler()
+	h.SetLegalMoves("e2e4", blackAfterE4())
+	m := connectStateful(t, h)
+	m, cmd := clickSquare(m, "e2")
+	m, cmd2 := clickSquare(m, "e4")
+	m = pump(t, m, tea.Batch(cmd, cmd2), func(u ui.Model) bool {
+		log := u.LogText()
+		return len(u.Moves()) >= 1 && u.Moves()[0] == "e2e4" &&
+			strings.Contains(log, "> go")
+	}, 80)
+	if m.Board().PieceAtName("e4") != 'P' || m.Board().PieceAtName("e2") != 0 {
+		t.Fatal("expected e2e4 on the board")
+	}
+	log := m.LogText()
+	if !strings.Contains(log, "> position") || !strings.Contains(log, "e2e4") {
+		t.Fatalf("expected outbound position with e2e4, log:\n%s", log)
+	}
+	if !strings.Contains(log, "> go") {
+		t.Fatalf("expected outbound go, log:\n%s", log)
+	}
+}
+
+func TestClickingAnIllegalDestinationIsRejected(t *testing.T) {
+	h := engine.NewStatefulHandler()
+	m := connectStateful(t, h)
+	before := outboundCount(m)
+	m, _ = clickSquare(m, "e2")
+	m, _ = clickSquare(m, "e5")
+	if len(m.Moves()) != 0 {
+		t.Fatalf("expected empty move list, got %v", m.Moves())
+	}
+	if m.Board().PieceAtName("e2") != 'P' || m.Board().PieceAtName("e5") != 0 {
+		t.Fatal("board should be unchanged")
+	}
+	if !strings.Contains(m.LogText(), "e2e5") || !strings.Contains(m.LogText(), "illegal") {
+		t.Fatalf("expected illegal e2e5, log:\n%s", m.LogText())
+	}
+	if outboundCount(m) != before {
+		t.Fatalf("expected no new outbound commands")
+	}
+}
+
+func TestClickingTheSelectedSquareCancelsTheSelection(t *testing.T) {
+	h := engine.NewStatefulHandler()
+	m := connectStateful(t, h)
+	before := outboundCount(m)
+	m, _ = clickSquare(m, "e2")
+	if m.SelectedSquare() != "e2" {
+		t.Fatalf("expected e2 selected, got %q", m.SelectedSquare())
+	}
+	m, _ = clickSquare(m, "e2")
+	if m.SelectedSquare() != "" {
+		t.Fatalf("re-click should cancel, got %q", m.SelectedSquare())
+	}
+	if len(m.Moves()) != 0 {
+		t.Fatalf("cancel must not submit, got %v", m.Moves())
+	}
+	if m.Board().PieceAtName("e2") != 'P' {
+		t.Fatal("board should be unchanged")
+	}
+	if outboundCount(m) != before {
+		t.Fatalf("expected no new outbound commands")
+	}
+}
+
+func TestClicksAreIgnoredWhileWaitingForTheEngine(t *testing.T) {
+	h := engine.NewStatefulHandler()
+	h.SetLegalMoves("e2e4", blackAfterE4())
+	m := connectStateful(t, h)
+	m.SetInputValue("e2e4")
+	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = model.(ui.Model)
+	beforeMoves := append([]string(nil), m.Moves()...)
+	beforeOut := outboundCount(m)
+	m, _ = clickSquare(m, "e7")
+	if m.SelectedSquare() != "" {
+		t.Fatalf("waiting clicks must not select, got %q", m.SelectedSquare())
+	}
+	m, _ = clickSquare(m, "e5")
+	if got := m.Moves(); len(got) != len(beforeMoves) || (len(got) > 0 && got[0] != "e2e4") {
+		t.Fatalf("waiting clicks must not add moves, got %v", got)
+	}
+	if outboundCount(m) != beforeOut {
+		t.Fatalf("waiting clicks must not send more UCI")
+	}
+}
+
+func TestArrowSelectionPlaysE2E4(t *testing.T) {
+	h := engine.NewStatefulHandler()
+	h.SetLegalMoves("e2e4", blackAfterE4())
+	m := connectStateful(t, h)
+	// First arrow press initialises cursor to e2; Space selects, Up×2 to e4, Space confirms.
+	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = model.(ui.Model)
+	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = model.(ui.Model)
+	model, cmd2 := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = model.(ui.Model)
+	model, cmd3 := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = model.(ui.Model)
+	model, cmd4 := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = pump(t, model, tea.Batch(cmd, cmd2, cmd3, cmd4), func(u ui.Model) bool {
+		log := u.LogText()
+		return len(u.Moves()) >= 1 && u.Moves()[0] == "e2e4" &&
+			strings.Contains(log, "> go")
+	}, 80)
+	if m.Board().PieceAtName("e4") != 'P' || m.Board().PieceAtName("e2") != 0 {
+		t.Fatal("expected e2e4 on the board")
+	}
+	log := m.LogText()
+	if !strings.Contains(log, "> position") || !strings.Contains(log, "e2e4") {
+		t.Fatalf("expected outbound position with e2e4, log:\n%s", log)
+	}
+	if !strings.Contains(log, "> go") {
+		t.Fatalf("expected outbound go, log:\n%s", log)
+	}
+}
+
+func resize(m ui.Model, w, h int) ui.Model {
+	model, _ := m.Update(tea.WindowSizeMsg{Width: w, Height: h})
+	return model.(ui.Model)
+}
+
+func TestLargeWindowUsesBiggerSquares(t *testing.T) {
+	m := resize(connectFake(t, engine.StubHandler), 80, 28)
+	if m.CellWidth() < 3 || m.CellHeight() < 2 {
+		t.Fatalf("expected cell at least 3x2 at 80x28, got %dx%d", m.CellWidth(), m.CellHeight())
+	}
+	if !viewHasGlyph(m.View(), "♙") && !viewHasGlyph(m.View(), "P") {
+		t.Fatalf("e2 pawn missing in large view:\n%s", m.View())
+	}
+}
+
+func TestNarrowWindowKeepsAReadable8x8Grid(t *testing.T) {
+	m := resize(connectFake(t, engine.StubHandler), 60, 20)
+	view := m.View()
+	for rank := 1; rank <= 8; rank++ {
+		if !strings.Contains(view, fmt.Sprintf("%d", rank)) {
+			t.Fatalf("missing rank %d in narrow view:\n%s", rank, view)
+		}
+	}
+	for _, file := range []string{"a", "b", "c", "d", "e", "f", "g", "h"} {
+		if !strings.Contains(view, file) {
+			t.Fatalf("missing file %s in narrow view:\n%s", file, view)
+		}
+	}
+	if !viewHasGlyph(view, "♙") && !viewHasGlyph(view, "P") {
+		t.Fatalf("e2 pawn missing in narrow view:\n%s", view)
+	}
+}
+
+func typeCmd(m ui.Model, raw string) ui.Model {
+	m.SetInputValue(raw)
+	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	return model.(ui.Model)
+}
+
+func TestPlaceAQueenOnD5(t *testing.T) {
+	m := connectStateful(t, engine.NewStatefulHandler())
+	beforeGo := strings.Count(m.LogText(), "> go")
+	m = typeCmd(m, "setup")
+	m = typeCmd(m, "Q")
+	m, _ = clickSquare(m, "d5")
+	if m.Board().PieceAtName("d5") != 'Q' {
+		t.Fatalf("expected white queen on d5, got %c", m.Board().PieceAtName("d5"))
+	}
+	if len(m.Moves()) != 0 {
+		t.Fatalf("setup must not append moves, got %v", m.Moves())
+	}
+	if strings.Count(m.LogText(), "> go") != beforeGo {
+		t.Fatal("setup must not send go")
+	}
+}
+
+func TestRemoveAPieceFromE2(t *testing.T) {
+	m := connectStateful(t, engine.NewStatefulHandler())
+	m = typeCmd(m, "setup")
+	m = typeCmd(m, "x")
+	m, _ = clickSquare(m, "e2")
+	if m.Board().PieceAtName("e2") != 0 {
+		t.Fatalf("e2 should be empty, got %c", m.Board().PieceAtName("e2"))
+	}
+	if len(m.Moves()) != 0 {
+		t.Fatalf("setup must not append moves, got %v", m.Moves())
+	}
+}
+
+func TestPlayAKingsAndQueenSetup(t *testing.T) {
+	h := engine.NewStatefulHandler()
+	h.SetLegalMoves("", []string{"d1d8", "e1d2", "e1e2", "e1f2", "e1f1", "e1d1"})
+	m := connectStateful(t, h)
+	m = typeCmd(m, "setup")
+	m = typeCmd(m, "clear")
+	m = typeCmd(m, "K")
+	m, _ = clickSquare(m, "e1")
+	m = typeCmd(m, "Q")
+	m, _ = clickSquare(m, "d1")
+	m = typeCmd(m, "k")
+	m, _ = clickSquare(m, "e8")
+	m = typeCmd(m, "play")
+	log := m.LogText()
+	if !strings.Contains(log, "> position fen 4k3/8/8/8/8/8/8/3QK3 w - - 0 1") {
+		t.Fatalf("expected custom FEN position, log:\n%s", log)
+	}
+	if !strings.Contains(log, "> legalmoves") {
+		t.Fatalf("expected legalmoves after play, log:\n%s", log)
+	}
+	if m.Board().PieceAtName("e1") != 'K' || m.Board().PieceAtName("d1") != 'Q' || m.Board().PieceAtName("e8") != 'k' {
+		t.Fatal("board should keep the three setup pieces")
+	}
+}
+
+func TestSetupWithoutBothKingsIsRejected(t *testing.T) {
+	m := connectStateful(t, engine.NewStatefulHandler())
+	beforePos := strings.Count(m.LogText(), "> position")
+	beforeGo := strings.Count(m.LogText(), "> go")
+	m = typeCmd(m, "setup")
+	m = typeCmd(m, "clear")
+	m = typeCmd(m, "K")
+	m, _ = clickSquare(m, "e1")
+	m = typeCmd(m, "play")
+	if !strings.Contains(m.LogText(), "king") {
+		t.Fatalf("expected both-kings error, log:\n%s", m.LogText())
+	}
+	if strings.Count(m.LogText(), "> position") != beforePos {
+		t.Fatal("rejected play must not send position")
+	}
+	if strings.Count(m.LogText(), "> go") != beforeGo {
+		t.Fatal("rejected play must not send go")
+	}
+}
+
+func TestHumanPlaysBlackFromStartpos(t *testing.T) {
+	h := engine.NewStatefulHandler()
+	h.SetLegalMoves("e2e4", blackAfterE4())
+	h.SetBestmove("e2e4")
+	m := connectStateful(t, h)
+	m = typeCmd(m, "black human")
+	m.SetInputValue("white engine")
+	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = pump(t, model, cmd, func(u ui.Model) bool {
+		return u.Board().PieceAtName("e4") == 'P' && strings.Contains(u.LogText(), "< bestmove e2e4")
+	}, 80)
+	if !strings.Contains(m.LogText(), "> go") {
+		t.Fatalf("expected go before a human move, log:\n%s", m.LogText())
+	}
+	if strings.Count(m.LogText(), "> go") != 1 {
+		t.Fatalf("should wait for human Black, extra go in:\n%s", m.LogText())
+	}
+}
+
+func TestEngineVersusEnginePlaysWithoutTypedMoves(t *testing.T) {
+	h := engine.NewStatefulHandler()
+	h.SetLegalMoves("e2e4", blackAfterE4())
+	h.SetBestmove("e2e4")
+	m := connectStateful(t, h)
+	m = typeCmd(m, "black engine")
+	m.SetInputValue("white engine")
+	model, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = pump(t, model, cmd, func(u ui.Model) bool {
+		return len(u.Moves()) >= 2
+	}, 100)
+	if m.Moves()[0] != "e2e4" || m.Moves()[1] != "e7e5" {
+		t.Fatalf("expected e2e4 e7e5, got %v", m.Moves())
+	}
+	if strings.Count(m.LogText(), "> go") < 2 {
+		t.Fatalf("expected two go commands, log:\n%s", m.LogText())
+	}
 }
 
 func TestSuccessfulEngineConnect(t *testing.T) {

@@ -41,14 +41,22 @@ Point Nibbler at the release binary. For the engine to move on the board, use Pl
 ## Controls
 
 - Type a UCI long-algebraic move (e.g. `e2e4`) and press Enter
+- Tab toggles Unicode piece glyphs and ASCII letters
+- Click a piece, then click a destination, to play through the same path as typed UCI
+- Arrow keys move a board cursor; Space selects / confirms a square the same way a click does
+- `setup` enters visual edit mode; `Q`/`q`/`K`/`k`/… then Enter chooses a piece, `x` erases
+- In setup, click or Space places the brush; `side` toggles who moves; `clear` empties; `startpos` resets; `play` starts from the board
+- `white human|engine` and `black human|engine` assign each side (default White human, Black engine)
 - `quit` or `ctrl+c` / `q` exits; the TUI sends UCI `quit` and waits for the engine to exit
+
+The board grows with the terminal: larger windows get bigger squares, smaller ones stay a compact 8×8.
 
 ## Layout
 
-- Board + move list
+- Scaled board + move list
 - Scrolling UCI transcript (outbound `>` / inbound `<`)
 - Telemetry panel for engine `info` lines
-- Input line for moves
+- Status line for player slots and setup, then the input line
 
 ## Tests
 

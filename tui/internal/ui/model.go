@@ -34,41 +34,65 @@ type Config struct {
 
 // Model is the Bubble Tea app state.
 type Model struct {
-	cfg           Config
-	phase         phase
-	errMsg        string
-	client        *engine.Client
-	board         board.Board
-	moves         []string
-	logLines      []string
-	tele          info.Telemetry
-	input         textinput.Model
-	logView       viewport.Model
-	waiting       bool
-	width         int
-	height        int
-	ready         bool
-	inbox         chan tea.Msg
-	legalMoves    map[string]bool // current legal move set from engine
-	engineLegal   map[string]bool // legal set for the engine's side (fetched before go)
-	awaitingLegal bool            // waiting for legalmoves response
-	pendingGo     bool            // need to send go after receiving engine-side legalmoves
+	cfg            Config
+	phase          phase
+	errMsg         string
+	client         *engine.Client
+	board          board.Board
+	moves          []string
+	logLines       []string
+	tele           info.Telemetry
+	input          textinput.Model
+	logView        viewport.Model
+	waiting        bool
+	width          int
+	height         int
+	ready          bool
+	inbox          chan tea.Msg
+	legalMoves     map[string]bool // current legal move set from engine
+	engineLegal    map[string]bool // legal set for the engine's side (fetched before go)
+	awaitingLegal  bool            // waiting for legalmoves response
+	pendingGo      bool            // need to send go after receiving engine-side legalmoves
+	unicodePieces  bool
+	selectedSquare string
+	cursorSquare   string
+	metrics        BoardMetrics
+	setupMode      bool
+	brush          byte // 0 empty-place ignored; 'x' erase; otherwise piece letter
+	whiteToMove    bool
+	baseFEN        string
+	whiteSlot      playerSlot
+	blackSlot      playerSlot
 }
+
+type playerSlot int
+
+const (
+	slotHuman playerSlot = iota
+	slotEngine
+)
 
 func New(cfg Config) Model {
 	ti := textinput.New()
-	ti.Placeholder = "e2e4 / quit"
-	ti.CharLimit = 16
+	ti.Placeholder = "e2e4 / setup / white engine / quit"
+	ti.CharLimit = 24
 	ti.Width = 24
 	vp := viewport.New(60, 8)
 	vp.SetContent("")
 	return Model{
-		cfg:     cfg,
-		phase:   phaseBoot,
-		board:   board.StartPos(),
-		tele:    info.Idle(),
-		input:   ti,
-		logView: vp,
+		cfg:           cfg,
+		phase:         phaseBoot,
+		board:         board.StartPos(),
+		tele:          info.Idle(),
+		input:         ti,
+		logView:       vp,
+		unicodePieces: true,
+		cursorSquare:  "",
+		metrics:       DefaultBoardMetrics(),
+		whiteToMove:   true,
+		baseFEN:       board.StartFEN,
+		whiteSlot:     slotHuman,
+		blackSlot:     slotEngine,
 	}
 }
 
@@ -112,8 +136,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.metrics = ComputeBoardMetrics(msg.Width, msg.Height)
 		m.logView.Width = max(20, msg.Width-4)
-		m.logView.Height = max(4, msg.Height/4)
+		boardRows := 8*m.metrics.CellH + fileLabelRows + boardBorderRows
+		remain := msg.Height - boardRows - 9
+		if remain < 2 {
+			remain = 2
+		}
+		m.logView.Height = remain
 		return m, nil
 
 	case startResultMsg:
@@ -171,9 +201,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Type == tea.KeyEnter {
 			return m.submitInput()
 		}
+		if msg.Type == tea.KeyTab {
+			m.unicodePieces = !m.unicodePieces
+			return m, nil
+		}
+		if msg.Type == tea.KeyUp || msg.Type == tea.KeyDown || msg.Type == tea.KeyLeft || msg.Type == tea.KeyRight {
+			m.moveCursor(msg.Type)
+			return m, nil
+		}
+		if msg.Type == tea.KeySpace || msg.String() == " " {
+			if m.cursorSquare != "" {
+				return m.handleSquare(m.cursorSquare)
+			}
+			return m, nil
+		}
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
 		return m, cmd
+
+	case tea.MouseMsg:
+		if m.phase != phasePlay {
+			return m, nil
+		}
+		return m.handleMouse(msg)
 
 	case quitDoneMsg:
 		m.phase = phaseDone
@@ -227,6 +277,8 @@ func (m Model) handleLine(text string) (Model, tea.Cmd) {
 				// This is the human-side legal set
 				m.legalMoves = set
 				m.awaitingLegal = false
+				nm, cmd := m.requestEngineIfNeeded()
+				return nm.(Model), cmd
 			}
 		}
 		if strings.HasPrefix(text, "bestmove") {
@@ -253,13 +305,16 @@ func (m Model) handleLine(text string) (Model, tea.Cmd) {
 					} else {
 						m.board = candidate
 						m.moves = append(m.moves, mv)
-						// Synchronize full history
-						pos := "position startpos moves " + strings.Join(m.moves, " ")
-						_ = m.send(pos)
-						// Refresh legal moves for human side
+						m.whiteToMove = !m.whiteToMove
+						_ = m.send(m.positionCommand())
 						_ = m.send("legalmoves")
-						m.awaitingLegal = true
 						m.legalMoves = nil
+						if m.mover() == slotEngine {
+							m.pendingGo = true
+							m.waiting = true
+						} else {
+							m.awaitingLegal = true
+						}
 					}
 				}
 			}
@@ -309,10 +364,168 @@ func (m Model) submitInput() (tea.Model, tea.Cmd) {
 	if raw == "quit" || raw == "q" {
 		return m.beginQuit()
 	}
+	if cmd, ok := m.handleCommand(raw); ok {
+		return cmd()
+	}
+	if m.setupMode {
+		return m, nil
+	}
+	return m.submitMove(raw)
+}
+
+func (m Model) handleCommand(raw string) (func() (tea.Model, tea.Cmd), bool) {
+	switch raw {
+	case "setup":
+		return func() (tea.Model, tea.Cmd) {
+			m.setupMode = true
+			m.selectedSquare = ""
+			m.brush = 0
+			return m, nil
+		}, true
+	case "play":
+		return func() (tea.Model, tea.Cmd) { return m.startPlayFromSetup() }, true
+	case "side":
+		return func() (tea.Model, tea.Cmd) {
+			if m.setupMode {
+				m.whiteToMove = !m.whiteToMove
+			}
+			return m, nil
+		}, true
+	case "clear":
+		return func() (tea.Model, tea.Cmd) {
+			if m.setupMode {
+				m.board.Clear()
+			}
+			return m, nil
+		}, true
+	case "startpos":
+		return func() (tea.Model, tea.Cmd) {
+			if m.setupMode {
+				m.board = board.StartPos()
+				m.whiteToMove = true
+			}
+			return m, nil
+		}, true
+	}
+	if slot, kind, ok := parseSlotCommand(raw); ok {
+		return func() (tea.Model, tea.Cmd) {
+			if slot == "white" {
+				m.whiteSlot = kind
+			} else {
+				m.blackSlot = kind
+			}
+			return m.requestEngineIfNeeded()
+		}, true
+	}
+	if m.setupMode && isBrushToken(raw) {
+		return func() (tea.Model, tea.Cmd) {
+			if raw == "x" {
+				m.brush = 'x'
+			} else {
+				m.brush = raw[0]
+			}
+			return m, nil
+		}, true
+	}
+	return nil, false
+}
+
+func parseSlotCommand(raw string) (string, playerSlot, bool) {
+	fields := strings.Fields(raw)
+	if len(fields) != 2 {
+		return "", 0, false
+	}
+	if fields[0] != "white" && fields[0] != "black" {
+		return "", 0, false
+	}
+	switch fields[1] {
+	case "human":
+		return fields[0], slotHuman, true
+	case "engine":
+		return fields[0], slotEngine, true
+	}
+	return "", 0, false
+}
+
+func (m Model) mover() playerSlot {
+	if m.whiteToMove {
+		return m.whiteSlot
+	}
+	return m.blackSlot
+}
+
+func (m Model) requestEngineIfNeeded() (tea.Model, tea.Cmd) {
+	if m.setupMode || m.waiting || m.awaitingLegal || m.legalMoves == nil {
+		return m, nil
+	}
+	if m.mover() != slotEngine {
+		return m, nil
+	}
+	_ = m.send("legalmoves")
+	m.pendingGo = true
+	m.waiting = true
+	if m.inbox != nil {
+		return m, waitInbox(m.inbox)
+	}
+	return m, nil
+}
+
+func isBrushToken(raw string) bool {
+	if raw == "x" {
+		return true
+	}
+	if len(raw) != 1 {
+		return false
+	}
+	switch raw[0] {
+	case 'K', 'Q', 'R', 'B', 'N', 'P', 'k', 'q', 'r', 'b', 'n', 'p':
+		return true
+	}
+	return false
+}
+
+func (m Model) startPlayFromSetup() (tea.Model, tea.Cmd) {
+	if !m.setupMode {
+		return m, nil
+	}
+	w, b := m.board.CountKings()
+	if w != 1 || b != 1 {
+		m.logLines = append(m.logLines, "! both kings are required")
+		m.refreshLogView()
+		return m, nil
+	}
+	fen := m.board.FEN(m.whiteToMove)
+	m.baseFEN = fen
+	m.moves = nil
+	m.legalMoves = nil
+	m.selectedSquare = ""
+	m.setupMode = false
+	m.brush = 0
+	_ = m.send("ucinewgame")
+	_ = m.send("position fen " + fen)
+	_ = m.send("legalmoves")
+	m.awaitingLegal = true
+	if m.inbox != nil {
+		return m, waitInbox(m.inbox)
+	}
+	return m, nil
+}
+
+func (m Model) resolveSquareMove(from, to string) string {
+	token := from + to
+	if m.legalMoves != nil && m.legalMoves[token] {
+		return token
+	}
+	if m.legalMoves != nil && m.legalMoves[token+"q"] {
+		return token + "q"
+	}
+	return token
+}
+
+func (m Model) submitMove(raw string) (tea.Model, tea.Cmd) {
 	if m.waiting || m.awaitingLegal || m.legalMoves == nil {
 		return m, nil
 	}
-	// Gate on legal move set
 	if m.legalMoves != nil && !m.legalMoves[raw] {
 		m.logLines = append(m.logLines, fmt.Sprintf("! illegal move: %s", raw))
 		m.refreshLogView()
@@ -326,17 +539,109 @@ func (m Model) submitInput() (tea.Model, tea.Cmd) {
 	}
 	m.board = candidate
 	m.moves = append(m.moves, raw)
-	m.legalMoves = nil // clear until refreshed
-	pos := "position startpos moves " + strings.Join(m.moves, " ")
-	_ = m.send(pos)
-	// Request engine-side legal set before go
+	m.legalMoves = nil
+	m.selectedSquare = ""
+	m.whiteToMove = !m.whiteToMove
+	_ = m.send(m.positionCommand())
 	_ = m.send("legalmoves")
-	m.pendingGo = true
-	m.waiting = true
+	if m.mover() == slotEngine {
+		m.pendingGo = true
+		m.waiting = true
+	} else {
+		m.awaitingLegal = true
+	}
 	if m.inbox != nil {
 		return m, waitInbox(m.inbox)
 	}
 	return m, nil
+}
+
+func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if msg.Action != tea.MouseActionPress || msg.Button != tea.MouseButtonLeft {
+		return m, nil
+	}
+	name, ok := SquareAtCellWith(msg.X, msg.Y, m.metrics)
+	if !ok {
+		return m, nil
+	}
+	return m.handleSquare(name)
+}
+
+func (m Model) positionCommand() string {
+	if len(m.moves) == 0 {
+		if m.baseFEN == "" || m.baseFEN == board.StartFEN {
+			return "position startpos"
+		}
+		return "position fen " + m.baseFEN
+	}
+	joined := strings.Join(m.moves, " ")
+	if m.baseFEN == "" || m.baseFEN == board.StartFEN {
+		return "position startpos moves " + joined
+	}
+	return "position fen " + m.baseFEN + " moves " + joined
+}
+
+func (m Model) handleSquare(name string) (tea.Model, tea.Cmd) {
+	if m.setupMode {
+		if m.brush == 0 {
+			return m, nil
+		}
+		if m.brush == 'x' {
+			m.board.ClearSquare(name)
+		} else {
+			m.board.SetSquare(name, m.brush)
+		}
+		return m, nil
+	}
+	if m.waiting || m.awaitingLegal || m.legalMoves == nil {
+		return m, nil
+	}
+	if m.selectedSquare == "" {
+		if m.board.PieceAtName(name) == board.Empty {
+			return m, nil
+		}
+		m.selectedSquare = name
+		return m, nil
+	}
+	if name == m.selectedSquare {
+		m.selectedSquare = ""
+		return m, nil
+	}
+	uci := m.resolveSquareMove(m.selectedSquare, name)
+	m.selectedSquare = ""
+	return m.submitMove(uci)
+}
+
+func (m *Model) moveCursor(key tea.KeyType) {
+	sq, err := board.ParseSquare(m.cursorSquare)
+	if err != nil {
+		m.cursorSquare = "e2"
+		return
+	}
+	file, rank := sq%8, sq/8
+	switch key {
+	case tea.KeyLeft:
+		file--
+	case tea.KeyRight:
+		file++
+	case tea.KeyUp:
+		rank++
+	case tea.KeyDown:
+		rank--
+	}
+	if file < 0 {
+		file = 0
+	}
+	if file > 7 {
+		file = 7
+	}
+	if rank < 0 {
+		rank = 0
+	}
+	if rank > 7 {
+		rank = 7
+	}
+	m.cursorSquare = board.SquareName(rank*8 + file)
 }
 
 func (m Model) beginQuit() (tea.Model, tea.Cmd) {
@@ -352,6 +657,82 @@ func (m Model) beginQuit() (tea.Model, tea.Cmd) {
 	}
 }
 
+func (m Model) renderBoard() string {
+	met := m.metrics
+	if met.CellW == 0 {
+		met = DefaultBoardMetrics()
+	}
+	lightSquare := lipgloss.NewStyle().Background(lipgloss.Color("#b58863")).Foreground(lipgloss.Color("#000000"))
+	darkSquare := lipgloss.NewStyle().Background(lipgloss.Color("#f0d9b5")).Foreground(lipgloss.Color("#000000"))
+	cursorStyle := lipgloss.NewStyle().Background(lipgloss.Color("#7fc97f")).Foreground(lipgloss.Color("#000000"))
+	selectedStyle := lipgloss.NewStyle().Background(lipgloss.Color("#ffff66")).Foreground(lipgloss.Color("#000000"))
+	var lines []string
+	for rank := 7; rank >= 0; rank-- {
+		rowCells := make([][]string, met.CellH)
+		for i := range rowCells {
+			rowCells[i] = make([]string, 0, 9)
+		}
+		label := string(byte('1' + rank))
+		for r := 0; r < met.CellH; r++ {
+			if r == met.CellH/2 {
+				rowCells[r] = append(rowCells[r], padCenter(label, met.LabelW))
+			} else {
+				rowCells[r] = append(rowCells[r], strings.Repeat(" ", met.LabelW))
+			}
+		}
+		for file := 0; file < 8; file++ {
+			name := board.SquareName(rank*8 + file)
+			glyph := m.board.GlyphAt(name, m.unicodePieces)
+			cellLines := padCell(glyph, met.CellW, met.CellH)
+			isLight := (rank+file)%2 == 1
+			style := darkSquare
+			if isLight {
+				style = lightSquare
+			}
+			switch name {
+			case m.selectedSquare:
+				style = selectedStyle
+			case m.cursorSquare:
+				style = cursorStyle
+			}
+			for r := 0; r < met.CellH; r++ {
+				rowCells[r] = append(rowCells[r], style.Render(cellLines[r]))
+			}
+		}
+		for r := 0; r < met.CellH; r++ {
+			lines = append(lines, strings.Join(rowCells[r], ""))
+		}
+	}
+	fileRow := strings.Repeat(" ", met.LabelW)
+	for file := 0; file < 8; file++ {
+		fileRow += padCenter(string(byte('a'+file)), met.CellW)
+	}
+	lines = append(lines, fileRow)
+	return strings.Join(lines, "\n")
+}
+
+func padCell(glyph string, w, h int) []string {
+	out := make([]string, h)
+	for r := 0; r < h; r++ {
+		if r == h/2 {
+			out[r] = padCenter(glyph, w)
+		} else {
+			out[r] = strings.Repeat(" ", w)
+		}
+	}
+	return out
+}
+
+func padCenter(s string, w int) string {
+	n := len([]rune(s))
+	if n >= w {
+		return s
+	}
+	left := (w - n) / 2
+	right := w - n - left
+	return strings.Repeat(" ", left) + s + strings.Repeat(" ", right)
+}
+
 func (m Model) View() string {
 	if m.phase == phaseError {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render(
@@ -362,7 +743,7 @@ func (m Model) View() string {
 		return "Connecting to engine…"
 	}
 
-	boardStr := m.board.Render()
+	boardStr := m.renderBoard()
 	movesStr := "Moves:\n"
 	if len(m.moves) == 0 {
 		movesStr += "(none)"
@@ -379,8 +760,29 @@ func (m Model) View() string {
 	teleBlock := lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1).Render(
 		"Telemetry\n" + m.tele.Render(),
 	)
-	inputLine := "input: " + m.input.View()
+	status := fmt.Sprintf("White: %s  Black: %s", slotName(m.whiteSlot), slotName(m.blackSlot))
+	if m.setupMode {
+		brush := "none"
+		if m.brush == 'x' {
+			brush = "erase"
+		} else if m.brush != 0 {
+			brush = string(m.brush)
+		}
+		side := "b"
+		if m.whiteToMove {
+			side = "w"
+		}
+		status += fmt.Sprintf("  setup %s  side: %s", brush, side)
+	}
+	inputLine := status + "\ninput: " + m.input.View()
 	return lipgloss.JoinVertical(lipgloss.Left, top, logBlock, teleBlock, inputLine)
+}
+
+func slotName(s playerSlot) string {
+	if s == slotEngine {
+		return "Engine"
+	}
+	return "Human"
 }
 
 // Test inspectors / helpers
@@ -405,6 +807,20 @@ func (m Model) Moves() []string           { return append([]string(nil), m.moves
 func (m Model) Board() board.Board        { return m.board }
 func (m Model) Telemetry() info.Telemetry { return m.tele }
 func (m Model) IsPlayable() bool          { return m.phase == phasePlay }
+func (m Model) SelectedSquare() string    { return m.selectedSquare }
+func (m Model) CursorSquare() string      { return m.cursorSquare }
+func (m Model) CellWidth() int {
+	if m.metrics.CellW == 0 {
+		return 2
+	}
+	return m.metrics.CellW
+}
+func (m Model) CellHeight() int {
+	if m.metrics.CellH == 0 {
+		return 1
+	}
+	return m.metrics.CellH
+}
 
 func max(a, b int) int {
 	if a > b {

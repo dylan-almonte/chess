@@ -70,7 +70,7 @@ On `go` in a position with at least one legal move, the engine MUST emit one or 
 - **AND** the last `bestmove` line follows those `info` lines
 
 ### Requirement: Go bestmove follows search
-`bestmove` MUST match the search best move at the requested depth (or default depth `4` when `depth` is omitted).
+`bestmove` MUST match the search best move at the requested depth (or default depth `5` when `depth` is omitted).
 
 #### Scenario: Depth 1 captures the hanging queen
 - **GIVEN** position set with `position fen 4k3/8/8/8/7q/8/8/4K2R w - - 0 1`
