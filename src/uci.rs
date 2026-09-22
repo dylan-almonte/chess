@@ -12,7 +12,7 @@ use crate::search::{SearchResult, mate_in, search_iter};
 const START_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 pub const ENGINE_NAME: &str = "chess";
 pub const ENGINE_AUTHOR: &str = "dylanca";
-const DEFAULT_GO_DEPTH: u32 = 4;
+const DEFAULT_GO_DEPTH: u32 = 5;
 
 /// Result of handling one UCI input line.
 #[derive(Clone, Debug, PartialEq, Eq)]

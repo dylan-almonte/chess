@@ -36,7 +36,7 @@ The engine MUST accept `position startpos`, `position startpos moves …`, `posi
 - **THEN** `bestmove` is a legal move in the position after `e2e4 e7e5`
 
 ### Requirement: Go returns a legal bestmove
-On `go`, the engine MUST output exactly one `bestmove <move>` line where `<move>` is a legal UCI move chosen by search for the current position, unless the command includes `infinite` (see below). If `depth N` is present (`N` a positive integer), search MUST use maximum depth `N`. If `depth` is omitted, search MUST use maximum depth `4`. Time-control tokens (`wtime`, `btime`, `movetime`) and `nodes` MUST be ignored. If the side to move has no legal moves, the `bestmove` line (when emitted) MUST be `bestmove 0000`.
+On `go`, the engine MUST output exactly one `bestmove <move>` line where `<move>` is a legal UCI move chosen by search for the current position, unless the command includes `infinite` (see below). If `depth N` is present (`N` a positive integer), search MUST use maximum depth `N`. If `depth` is omitted, search MUST use maximum depth `5`. Time-control tokens (`wtime`, `btime`, `movetime`) and `nodes` MUST be ignored. If the side to move has no legal moves, the `bestmove` line (when emitted) MUST be `bestmove 0000`.
 
 #### Scenario: Go from startpos returns a legal move
 - **GIVEN** position set with `position startpos`
@@ -70,7 +70,7 @@ On `go` in a position with at least one legal move, the engine MUST emit one or 
 - **AND** the last `bestmove` line follows those `info` lines
 
 ### Requirement: Go bestmove follows search
-`bestmove` MUST match the search best move at the requested depth (or default depth `4` when `depth` is omitted).
+`bestmove` MUST match the search best move at the requested depth (or default depth `5` when `depth` is omitted).
 
 #### Scenario: Depth 1 captures the hanging queen
 - **GIVEN** position set with `position fen 4k3/8/8/8/7q/8/8/4K2R w - - 0 1`
